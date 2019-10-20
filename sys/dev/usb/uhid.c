@@ -137,8 +137,9 @@ uhid_attach(struct device *parent, struct device *self, void *aux)
 	sc->sc_hdev.sc_osize = hid_report_size(desc, size, hid_output, repid);
 	sc->sc_hdev.sc_fsize = hid_report_size(desc, size, hid_feature, repid);
 
-	printf(": input=%d, output=%d, feature=%d\n",
-	    sc->sc_hdev.sc_isize, sc->sc_hdev.sc_osize, sc->sc_hdev.sc_fsize);
+	printf(": reportid=%d, input=%d, output=%d, feature=%d\n",
+	    sc->sc_hdev.sc_report_id, sc->sc_hdev.sc_isize,
+	    sc->sc_hdev.sc_osize, sc->sc_hdev.sc_fsize);
 }
 
 int
@@ -310,6 +311,7 @@ uhid_do_write(struct uhid_softc *sc, struct uio *uio, int flag)
 {
 	int error;
 	int size;
+	int report;
 
 	DPRINTFN(1, ("uhidwrite\n"));
 
@@ -318,12 +320,13 @@ uhid_do_write(struct uhid_softc *sc, struct uio *uio, int flag)
 
 	size = sc->sc_hdev.sc_osize;
 	error = 0;
+	report = sc->sc_hdev.sc_report_id == 0 ? 0 : UHID_OUTPUT_REPORT;
 	if (uio->uio_resid != size)
 		return (EINVAL);
 	error = uiomove(sc->sc_obuf, size, uio);
 	if (!error) {
 		if (uhidev_set_report(sc->sc_hdev.sc_parent,
-		    UHID_OUTPUT_REPORT, sc->sc_hdev.sc_report_id, sc->sc_obuf,
+		    report, sc->sc_hdev.sc_report_id, sc->sc_obuf,
 		    size) != size)
 			error = EIO;
 	}
