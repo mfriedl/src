@@ -58,10 +58,11 @@
 
 #include <dev/usb/uhidev.h>
 
+#define UHID_DEBUG
 #ifdef UHID_DEBUG
 #define DPRINTF(x)	do { if (uhiddebug) printf x; } while (0)
 #define DPRINTFN(n,x)	do { if (uhiddebug>(n)) printf x; } while (0)
-int	uhiddebug = 0;
+int	uhiddebug = 10;
 #else
 #define DPRINTF(x)
 #define DPRINTFN(n,x)
