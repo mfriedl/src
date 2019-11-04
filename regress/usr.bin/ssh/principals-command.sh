@@ -10,7 +10,7 @@ if [ -z "$SUDO" -a ! -w /var/run ]; then
 	fatal "need SUDO to create file in /var/run, test won't work without"
 fi
 
-case "`${SSH} -Q key-plain | grep -v ^sk-`" in
+case "`${SSH} -Q key-plain`" in
 	*ssh-rsa*)	userkeytype=rsa ;;
 	*)		userkeytype=ed25519 ;;
 esac

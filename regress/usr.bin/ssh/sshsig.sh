@@ -23,7 +23,7 @@ CA_PRIV=$OBJ/sigca-key
 CA_PUB=$OBJ/sigca-key.pub
 
 trace "start agent"
-eval `${SSHAGENT} -s` > /dev/null
+eval `${SSHAGENT} ${EXTRA_AGENT_ARGS} -s` > /dev/null
 r=$?
 if [ $r -ne 0 ]; then
 	fatal "could not start ssh-agent: exit code $r"

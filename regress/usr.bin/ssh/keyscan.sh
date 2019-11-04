@@ -3,7 +3,7 @@
 
 tid="keyscan"
 
-KEYTYPES=`${SSH} -Q key-plain | grep -v ^sk-`
+KEYTYPES=`${SSH} -Q key-plain | filter_sk`
 for i in $KEYTYPES; do
 	if [ -z "$algs" ]; then
 		algs="$i"

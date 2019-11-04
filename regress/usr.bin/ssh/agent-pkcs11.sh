@@ -59,7 +59,7 @@ openssl pkcs8 -nocrypt -in $EC |\
     softhsm2-util --slot "$slot" --label 02 --id 02 --pin "$TEST_SSH_PIN" --import /dev/stdin
 
 trace "start agent"
-eval `${SSHAGENT} -s` > /dev/null
+eval `${SSHAGENT} ${EXTRA_AGENT_ARGS} -s` > /dev/null
 r=$?
 if [ $r -ne 0 ]; then
 	fail "could not start ssh-agent: exit code $r"
