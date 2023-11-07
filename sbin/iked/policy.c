@@ -1133,8 +1133,7 @@ proposals_match(struct iked_proposal *local, struct iked_proposal *peer,
 				continue;
 			type = tpeer->xform_type;
 
-			if (rekey && nodh == 0 && dhgroup >= 0 &&
-			    protoid == IKEV2_SAPROTO_ESP &&
+			if (nodh == 0 && dhgroup >= 0 &&
 			    type == IKEV2_XFORMTYPE_DH) {
 				if (dhforced)
 					continue;
