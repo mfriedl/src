@@ -2,31 +2,30 @@
 #       $OpenBSD: kyber768.sh,v 1.7 2023/01/11 02:13:52 djm Exp $
 #       Placed in the Public Domain.
 #
-AUTHOR="supercop-20230530/crypto_kem/kyber768/designers" # FIXME
-AUTHOR=/dev/null	# FIXME
-# supercop-20230530/crypto_kem/kyber768/ref/api.h
+# files from https://github.com/pq-crystals/kyber
+AUTHOR="kyber/AUTHORS"
 FILES="
-	supercop-20230530/crypto_kem/kyber768/ref/params.h
-	supercop-20230530/crypto_kem/kyber768/ref/poly.h
-	supercop-20230530/crypto_kem/kyber768/ref/polyvec.h
-	supercop-20230530/crypto_kem/kyber768/ref/cbd.h
-	supercop-20230530/crypto_kem/kyber768/ref/fips202.h
-	supercop-20230530/crypto_kem/kyber768/ref/indcpa.h
-	supercop-20230530/crypto_kem/kyber768/ref/kem.h
-	supercop-20230530/crypto_kem/kyber768/ref/ntt.h
-	supercop-20230530/crypto_kem/kyber768/ref/reduce.h
-	supercop-20230530/crypto_kem/kyber768/ref/symmetric.h
-	supercop-20230530/crypto_kem/kyber768/ref/verify.h
-	supercop-20230530/crypto_kem/kyber768/ref/cbd.c
-	supercop-20230530/crypto_kem/kyber768/ref/fips202.c
-	supercop-20230530/crypto_kem/kyber768/ref/indcpa.c
-	supercop-20230530/crypto_kem/kyber768/ref/kem.c
-	supercop-20230530/crypto_kem/kyber768/ref/ntt.c
-	supercop-20230530/crypto_kem/kyber768/ref/poly.c
-	supercop-20230530/crypto_kem/kyber768/ref/polyvec.c
-	supercop-20230530/crypto_kem/kyber768/ref/reduce.c
-	supercop-20230530/crypto_kem/kyber768/ref/symmetric-shake.c
-	supercop-20230530/crypto_kem/kyber768/ref/verify.c
+	kyber/ref/params.h
+	kyber/ref/poly.h
+	kyber/ref/polyvec.h
+	kyber/ref/cbd.h
+	kyber/ref/fips202.h
+	kyber/ref/indcpa.h
+	kyber/ref/kem.h
+	kyber/ref/ntt.h
+	kyber/ref/reduce.h
+	kyber/ref/symmetric.h
+	kyber/ref/verify.h
+	kyber/ref/cbd.c
+	kyber/ref/fips202.c
+	kyber/ref/indcpa.c
+	kyber/ref/kem.c
+	kyber/ref/ntt.c
+	kyber/ref/poly.c
+	kyber/ref/polyvec.c
+	kyber/ref/reduce.c
+	kyber/ref/symmetric-shake.c
+	kyber/ref/verify.c
 "
 ###
 
@@ -69,7 +68,7 @@ for i in $FILES; do
 	    $i | \
 	case "$i" in
 	# Remove unused function to prevent warning.
-	*/crypto_kem/kyber768/ref/fips202.c)
+	*/ref/fips202.c)
 	    sed \
 		-e '/int keccak_absorb(/,/^}$/d' \
 		-e '/void keccak_finalize(.*)$/,/^$/d' \
@@ -83,7 +82,7 @@ for i in $FILES; do
 		-e '/void shake256_finalize(.*)$/,/^$/d' \
 		-e '/void shake256_init(.*)$/,/^$/d'
 	    ;;
-	*/crypto_kem/kyber768/ref/fips202.h)
+	*/ref/fips202.h)
 	    sed \
 		-e '/void keccak_finalize(/d' \
 		-e '/void keccak_init(/d' \

@@ -2,6 +2,15 @@
 
 /*
  * Public Domain, Authors:
+ * - Joppe Bos,
+ * - Léo Ducas,
+ * - Eike Kiltz,
+ * - Tancrède Lepoint,
+ * - Vadim Lyubashevsky,
+ * - John Schanck,
+ * - Peter Schwabe,
+ * - Gregor Seiler,
+ * - Damien Stehlé
  */
 
 #include <string.h>
@@ -16,7 +25,7 @@
 #define int64 crypto_int64
 #define uint64 crypto_uint64
 
-/* from supercop-20230530/crypto_kem/kyber768/ref/params.h */
+/* from kyber/ref/params.h */
 #ifndef PARAMS_H
 #define PARAMS_H
 
@@ -27,6 +36,21 @@
 //#define KYBER_90S	/* Uncomment this if you want the 90S variant */
 
 /* Don't change parameters below this line */
+#if   (KYBER_K == 2)
+#ifdef KYBER_90S
+#else
+#endif
+#elif (KYBER_K == 3)
+#ifdef KYBER_90S
+#else
+#endif
+#elif (KYBER_K == 4)
+#ifdef KYBER_90S
+#else
+#endif
+#else
+#error "KYBER_K must be in {2,3,4}"
+#endif
 
 #define KYBER_N 256
 #define KYBER_Q 3329
@@ -65,14 +89,14 @@
 
 #endif
 
-/* from supercop-20230530/crypto_kem/kyber768/ref/poly.h */
+/* from kyber/ref/poly.h */
 #ifndef POLY_H
 #define POLY_H
 
 
 /*
  * Elements of R_q = Z_q[X]/(X^n + 1). Represents polynomial
- * coeffs[0] + X*coeffs[1] + X^2*xoeffs[2] + ... + X^{n-1}*coeffs[n-1]
+ * coeffs[0] + X*coeffs[1] + X^2*coeffs[2] + ... + X^{n-1}*coeffs[n-1]
  */
 typedef struct{
   int16_t coeffs[KYBER_N];
@@ -103,7 +127,7 @@ static void poly_sub(poly *r, const poly *a, const poly *b);
 
 #endif
 
-/* from supercop-20230530/crypto_kem/kyber768/ref/polyvec.h */
+/* from kyber/ref/polyvec.h */
 #ifndef POLYVEC_H
 #define POLYVEC_H
 
@@ -129,7 +153,7 @@ static void polyvec_add(polyvec *r, const polyvec *a, const polyvec *b);
 
 #endif
 
-/* from supercop-20230530/crypto_kem/kyber768/ref/cbd.h */
+/* from kyber/ref/cbd.h */
 #ifndef CBD_H
 #define CBD_H
 
@@ -140,7 +164,7 @@ static void poly_cbd_eta2(poly *r, const uint8_t buf[KYBER_ETA2*KYBER_N/4]);
 
 #endif
 
-/* from supercop-20230530/crypto_kem/kyber768/ref/fips202.h */
+/* from kyber/ref/fips202.h */
 #ifndef FIPS202_H
 #define FIPS202_H
 
@@ -169,7 +193,7 @@ static void sha3_512(uint8_t h[64], const uint8_t *in, size_t inlen);
 
 #endif
 
-/* from supercop-20230530/crypto_kem/kyber768/ref/indcpa.h */
+/* from kyber/ref/indcpa.h */
 #ifndef INDCPA_H
 #define INDCPA_H
 
@@ -189,7 +213,7 @@ static void indcpa_dec(uint8_t m[KYBER_INDCPA_MSGBYTES],
 
 #endif
 
-/* from supercop-20230530/crypto_kem/kyber768/ref/kem.h */
+/* from kyber/ref/kem.h */
 #ifndef KEM_H
 #define KEM_H
 
@@ -227,7 +251,7 @@ int crypto_kem_kyber768_dec(uint8_t *ss, const uint8_t *ct, const uint8_t *sk);
 
 #endif
 
-/* from supercop-20230530/crypto_kem/kyber768/ref/ntt.h */
+/* from kyber/ref/ntt.h */
 #ifndef NTT_H
 #define NTT_H
 
@@ -241,13 +265,13 @@ static void basemul(int16_t r[2], const int16_t a[2], const int16_t b[2], int16_
 
 #endif
 
-/* from supercop-20230530/crypto_kem/kyber768/ref/reduce.h */
+/* from kyber/ref/reduce.h */
 #ifndef REDUCE_H
 #define REDUCE_H
 
 
-#define MONT 2285 // 2^16 mod q
-#define QINV 62209 // q^-1 mod 2^16
+#define MONT -1044 // 2^16 mod q
+#define QINV -3327 // q^-1 mod 2^16
 
 int16_t montgomery_reduce(int32_t a);
 
@@ -255,7 +279,7 @@ int16_t barrett_reduce(int16_t a);
 
 #endif
 
-/* from supercop-20230530/crypto_kem/kyber768/ref/symmetric.h */
+/* from kyber/ref/symmetric.h */
 #ifndef SYMMETRIC_H
 #define SYMMETRIC_H
 
@@ -307,7 +331,7 @@ static void kyber_shake256_prf(uint8_t *out, size_t outlen, const uint8_t key[KY
 
 #endif /* SYMMETRIC_H */
 
-/* from supercop-20230530/crypto_kem/kyber768/ref/verify.h */
+/* from kyber/ref/verify.h */
 #ifndef VERIFY_H
 #define VERIFY_H
 
@@ -318,7 +342,7 @@ static void cmov(uint8_t *r, const uint8_t *x, size_t len, uint8_t b);
 
 #endif
 
-/* from supercop-20230530/crypto_kem/kyber768/ref/cbd.c */
+/* from kyber/ref/cbd.c */
 
 /*************************************************
 * Name:        load32_littleendian
@@ -445,7 +469,7 @@ static void poly_cbd_eta2(poly *r, const uint8_t buf[KYBER_ETA2*KYBER_N/4])
 #endif
 }
 
-/* from supercop-20230530/crypto_kem/kyber768/ref/fips202.c */
+/* from kyber/ref/fips202.c */
 /* Based on the public domain implementation in crypto_hash/keccakc512/simple/ from
  * http://bench.cr.yp.to/supercop.html by Ronny Van Keer and the public domain "TweetFips202"
  * implementation from https://twitter.com/tweetfips202 by Gilles Van Assche, Daniel J. Bernstein,
@@ -1133,7 +1157,7 @@ static void sha3_512(uint8_t h[64], const uint8_t *in, size_t inlen)
     store64(h+8*i,s[i]);
 }
 
-/* from supercop-20230530/crypto_kem/kyber768/ref/indcpa.c */
+/* from kyber/ref/indcpa.c */
 
 /*************************************************
 * Name:        pack_pk
@@ -1455,7 +1479,7 @@ static void indcpa_dec(uint8_t m[KYBER_INDCPA_MSGBYTES],
   poly_tomsg(m, &mp);
 }
 
-/* from supercop-20230530/crypto_kem/kyber768/ref/kem.c */
+/* from kyber/ref/kem.c */
 
 /*************************************************
 * Name:        crypto_kem_kyber768_keypair
@@ -1470,8 +1494,8 @@ static void indcpa_dec(uint8_t m[KYBER_INDCPA_MSGBYTES],
 *
 * Returns 0 (success)
 **************************************************/
-int crypto_kem_kyber768_keypair(uint8_t pk[KYBER_PUBLICKEYBYTES],
-                       uint8_t sk[KYBER_SECRETKEYBYTES])
+int crypto_kem_kyber768_keypair(uint8_t *pk,
+                       uint8_t *sk)
 {
   size_t i;
   indcpa_keypair(pk, sk);
@@ -1498,9 +1522,9 @@ int crypto_kem_kyber768_keypair(uint8_t pk[KYBER_PUBLICKEYBYTES],
 *
 * Returns 0 (success)
 **************************************************/
-int crypto_kem_kyber768_enc(uint8_t ct[KYBER_CIPHERTEXTBYTES],
-                   uint8_t ss[KYBER_SSBYTES],
-                   const uint8_t pk[KYBER_PUBLICKEYBYTES])
+int crypto_kem_kyber768_enc(uint8_t *ct,
+                   uint8_t *ss,
+                   const uint8_t *pk)
 {
   uint8_t buf[2*KYBER_SYMBYTES];
   /* Will contain key, coins */
@@ -1541,9 +1565,9 @@ int crypto_kem_kyber768_enc(uint8_t ct[KYBER_CIPHERTEXTBYTES],
 *
 * On failure, ss will contain a pseudo-random value.
 **************************************************/
-int crypto_kem_kyber768_dec(uint8_t ss[KYBER_SSBYTES],
-                   const uint8_t ct[KYBER_CIPHERTEXTBYTES],
-                   const uint8_t sk[KYBER_SECRETKEYBYTES])
+int crypto_kem_kyber768_dec(uint8_t *ss,
+                   const uint8_t *ct,
+                   const uint8_t *sk)
 {
   size_t i;
   int fail;
@@ -1576,7 +1600,7 @@ int crypto_kem_kyber768_dec(uint8_t ss[KYBER_SSBYTES],
   return 0;
 }
 
-/* from supercop-20230530/crypto_kem/kyber768/ref/ntt.c */
+/* from kyber/ref/ntt.c */
 
 /* Code to generate zetas and zetas_inv used in the number-theoretic transform:
 
@@ -1720,7 +1744,7 @@ static void basemul(int16_t r[2], const int16_t a[2], const int16_t b[2], int16_
   r[1] += fqmul(a[1], b[0]);
 }
 
-/* from supercop-20230530/crypto_kem/kyber768/ref/poly.c */
+/* from kyber/ref/poly.c */
 
 /*************************************************
 * Name:        poly_compress
@@ -2058,7 +2082,7 @@ static void poly_sub(poly *r, const poly *a, const poly *b)
     r->coeffs[i] = a->coeffs[i] - b->coeffs[i];
 }
 
-/* from supercop-20230530/crypto_kem/kyber768/ref/polyvec.c */
+/* from kyber/ref/polyvec.c */
 
 /*************************************************
 * Name:        polyvec_compress
@@ -2289,7 +2313,7 @@ static void polyvec_add(polyvec *r, const polyvec *a, const polyvec *b)
     poly_add(&r->vec[i], &a->vec[i], &b->vec[i]);
 }
 
-/* from supercop-20230530/crypto_kem/kyber768/ref/reduce.c */
+/* from kyber/ref/reduce.c */
 
 /*************************************************
 * Name:        montgomery_reduce
@@ -2304,13 +2328,10 @@ static void polyvec_add(polyvec *r, const polyvec *a, const polyvec *b)
 **************************************************/
 int16_t montgomery_reduce(int32_t a)
 {
-  int32_t t;
-  int16_t u;
+  int16_t t;
 
-  u = a*QINV;
-  t = (int32_t)u*KYBER_Q;
-  t = a - t;
-  t >>= 16;
+  t = (int16_t)a*QINV;
+  t = (a - (int32_t)t*KYBER_Q) >> 16;
   return t;
 }
 
@@ -2326,14 +2347,14 @@ int16_t montgomery_reduce(int32_t a)
 **************************************************/
 int16_t barrett_reduce(int16_t a) {
   int16_t t;
-  const int16_t v = ((1U << 26) + KYBER_Q/2)/KYBER_Q;
+  const int16_t v = ((1<<26) + KYBER_Q/2)/KYBER_Q;
 
   t  = ((int32_t)v*a + (1<<25)) >> 26;
   t *= KYBER_Q;
   return a - t;
 }
 
-/* from supercop-20230530/crypto_kem/kyber768/ref/symmetric-shake.c */
+/* from kyber/ref/symmetric-shake.c */
 
 /*************************************************
 * Name:        kyber_shake128_absorb
@@ -2380,7 +2401,7 @@ static void kyber_shake256_prf(uint8_t *out, size_t outlen, const uint8_t key[KY
   shake256(out, outlen, extkey, sizeof(extkey));
 }
 
-/* from supercop-20230530/crypto_kem/kyber768/ref/verify.c */
+/* from kyber/ref/verify.c */
 
 /*************************************************
 * Name:        verify
@@ -2420,6 +2441,16 @@ int verify(const uint8_t *a, const uint8_t *b, size_t len)
 static void cmov(uint8_t *r, const uint8_t *x, size_t len, uint8_t b)
 {
   size_t i;
+
+#if defined(__GNUC__) || defined(__clang__)
+  // Prevent the compiler from
+  //    1) inferring that b is 0/1-valued, and
+  //    2) handling the two cases with a branch.
+  // This is not necessary when verify.c and kem.c are separate translation
+  // units, but we expect that downstream consumers will copy this code and/or
+  // change how it is built.
+  __asm__("" : "+r"(b) : /* no inputs */);
+#endif
 
   b = -b;
   for(i=0;i<len;i++)
