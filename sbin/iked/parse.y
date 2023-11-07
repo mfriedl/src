@@ -280,6 +280,7 @@ const struct ipsec_xf groupxfs[] = {
 	{ "curve25519",		IKEV2_XFORMDH_CURVE25519 },
 	{ "grp31",		IKEV2_XFORMDH_CURVE25519 },
 	{ "sntrup761x25519",	IKEV2_XFORMDH_X_SNTRUP761X25519 },
+	{ "kyber768x25519",	IKEV2_XFORMDH_X_KYBER768X25519 },
 	{ NULL }
 };
 
