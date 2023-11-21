@@ -4034,10 +4034,10 @@ ikev2_send_ike_e(struct iked *env, struct iked_sa *sa, struct ibuf *buf,
 	if ((e = ibuf_static()) == NULL)
 		goto done;
 
-	if ((pld = ikev2_add_payload(e)) == NULL)
-		goto done;
-
 	if (buf) {
+		if ((pld = ikev2_add_payload(e)) == NULL)
+			goto done;
+
 		if (ibuf_add_buf(e, buf) != 0)
 			goto done;
 
