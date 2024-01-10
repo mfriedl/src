@@ -295,8 +295,6 @@ ikev2_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 		return (config_getcompile(env));
 	case IMSG_CTL_STATIC:
 		return (config_getstatic(env, imsg));
-	case IMSG_CERT_PARTIAL_CHAIN:
-		return(config_getcertpartialchain(env, imsg));
 	default:
 		break;
 	}
