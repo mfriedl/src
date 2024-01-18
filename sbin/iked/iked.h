@@ -99,6 +99,7 @@ struct ctl_conn {
 	uint8_t			 flags;
 #define CTL_CONN_NOTIFY		 0x01
 	struct imsgev		 iev;
+	uint32_t		 peerid;
 };
 TAILQ_HEAD(ctl_connlist, ctl_conn);
 
