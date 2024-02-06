@@ -248,6 +248,7 @@ ikev2_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 	case IMSG_CTL_PASSIVE:
 		if (config_getmode(env, imsg->hdr.type) == -1)
 			return (0);	/* ignore error */
+		config_enablesocket(env);
 		timer_del(env, &env->sc_inittmr);
 		TAILQ_FOREACH(pol, &env->sc_policies, pol_entry) {
 			if (policy_generate_ts(pol) == -1)
