@@ -634,11 +634,22 @@ proc_dispatch(int fd, short event, void *arg)
 	int			 verbose;
 	const char		*title;
 	struct privsep_fd	 pf;
+	static int		 called = 0;
 
 	title = ps->ps_title[privsep_process];
 	ibuf = &iev->ibuf;
 
 	if (event & EV_READ) {
+		if (privsep_process == PROC_CERT && p->p_id == PROC_PARENT) {
+			called++;
+			if (called >= 3 && called < 10) {
+				log_info("%s: delay %d", __func__, called);
+				sleep(1);
+				goto skip;
+			} else {
+				log_info("%s: accept %d", __func__, called);
+			}
+		}
 		if ((n = imsg_read(ibuf)) == -1 && errno != EAGAIN)
 			fatal("%s: imsg_read", __func__);
 		if (n == 0) {
@@ -648,6 +659,7 @@ proc_dispatch(int fd, short event, void *arg)
 			return;
 		}
 	}
+ skip:
 
 	if (event & EV_WRITE) {
 		if ((n = msgbuf_write(&ibuf->w)) == -1 && errno != EAGAIN)
@@ -666,8 +678,8 @@ proc_dispatch(int fd, short event, void *arg)
 		if (n == 0)
 			break;
 
-#if DEBUG > 1
-		log_debug("%s: %s %d got imsg %d peerid %d from %s %d",
+#if 1
+		log_info("%s: %s %d got imsg %d peerid %d from %s %d",
 		    __func__, title, ps->ps_instance + 1,
 		    imsg.hdr.type, imsg.hdr.peerid, p->p_title, imsg.hdr.pid);
 #endif
