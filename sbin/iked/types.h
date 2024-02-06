@@ -132,6 +132,7 @@ enum imsg_type {
 	IMSG_CTL_SHOW_CERTSTORE,
 	IMSG_CTL_SHOW_STATS,
 	IMSG_CTL_PROCFD,
+	IMSG_CTL_PROCREADY,
 };
 
 enum privsep_procid {

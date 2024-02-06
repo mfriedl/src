@@ -45,6 +45,7 @@ void	 parent_sig_handler(int, short, void *);
 int	 parent_dispatch_ca(int, struct privsep_proc *, struct imsg *);
 int	 parent_dispatch_control(int, struct privsep_proc *, struct imsg *);
 int	 parent_dispatch_ikev2(int, struct privsep_proc *, struct imsg *);
+void	 parent_connected(struct privsep *);
 int	 parent_configure(struct iked *);
 
 struct iked	*iked_env;
@@ -220,12 +221,9 @@ main(int argc, char *argv[])
 	signal_add(&ps->ps_evsigpipe, NULL);
 	signal_add(&ps->ps_evsigusr1, NULL);
 
-	proc_connect(ps);
-
 	vroute_init(env);
 
-	if (parent_configure(env) == -1)
-		fatalx("configuration failed");
+	proc_connect(ps, parent_connected);
 
 	event_dispatch();
 
@@ -233,6 +231,15 @@ main(int argc, char *argv[])
 	parent_shutdown(env);
 
 	return (0);
+}
+
+void
+parent_connected(struct privsep *ps)
+{
+	struct iked	*env = ps->ps_env;
+
+	if (parent_configure(env) == -1)
+		fatalx("configuration failed");
 }
 
 int
