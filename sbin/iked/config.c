@@ -507,8 +507,14 @@ config_setmode(struct iked *env, unsigned int passive)
 {
 	unsigned int	 type;
 
+	/*
+	 * In order to control the startup of the processes,
+	 * the messages are sent in this order:
+	 *   PROC_PARENT -> PROC_CERT -> PROC_PARENT -> PROC_IKEV2
+	 * so PROC_CERT is ready before PROC_IKEV2 is activated.
+	 */
 	type = passive ? IMSG_CTL_PASSIVE : IMSG_CTL_ACTIVE;
-	proc_compose(&env->sc_ps, PROC_IKEV2, type, NULL, 0);
+	proc_compose(&env->sc_ps, PROC_CERT, type, NULL, 0);
 
 	return (0);
 }
