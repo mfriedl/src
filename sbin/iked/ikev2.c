@@ -755,8 +755,8 @@ ikev2_recv(struct iked *env, struct iked_message *msg)
 		 * See if we have responded to this request before
 		 * For return values 0 and -1 we have.
 		 */
-		if ((r = ikev2_msg_retransmit_response(env, sa, msg,
-		    hdr->ike_exchange)) != -2) {
+		if ((r = ikev2_msg_retransmit_response(env, sa, msg, hdr))
+		     != -2) {
 			if (r == -1) {
 				log_warn("%s: failed to retransmit a "
 				    "response", __func__);
