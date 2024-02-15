@@ -170,7 +170,6 @@ main(int argc, char *argv[])
 
 	ps = &env->sc_ps;
 	ps->ps_env = env;
-	TAILQ_INIT(&ps->ps_rcsocks);
 
 	if (strlcpy(env->sc_conffile, conffile, PATH_MAX) >= PATH_MAX)
 		errx(1, "config file exceeds PATH_MAX");

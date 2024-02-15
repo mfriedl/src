@@ -516,7 +516,6 @@ proc_run(struct privsep *ps, struct privsep_proc *p,
 {
 	struct passwd		*pw;
 	const char		*root;
-	struct control_sock	*rcs;
 
 	log_procinit(p->p_title);
 
@@ -526,9 +525,6 @@ proc_run(struct privsep *ps, struct privsep_proc *p,
 	if (p->p_id == PROC_CONTROL && ps->ps_instance == 0) {
 		if (control_init(ps, &ps->ps_csock) == -1)
 			fatalx("%s: control_init", __func__);
-		TAILQ_FOREACH(rcs, &ps->ps_rcsocks, cs_entry)
-			if (control_init(ps, rcs) == -1)
-				fatalx("%s: control_init", __func__);
 	}
 
 	/* Use non-standard user */
@@ -578,9 +574,6 @@ proc_run(struct privsep *ps, struct privsep_proc *p,
 	if (p->p_id == PROC_CONTROL && ps->ps_instance == 0) {
 		if (control_listen(&ps->ps_csock) == -1)
 			fatalx("%s: control_listen", __func__);
-		TAILQ_FOREACH(rcs, &ps->ps_rcsocks, cs_entry)
-			if (control_listen(rcs) == -1)
-				fatalx("%s: control_listen", __func__);
 	}
 
 #if DEBUG
