@@ -74,6 +74,7 @@
 #include "sk-api.h"
 #include "addr.h"
 #include "srclimit.h"
+#include "atomicio.h"
 
 /* Re-exec fds */
 #define REEXEC_DEVCRYPTO_RESERVED_FD	(STDERR_FILENO + 1)
@@ -157,12 +158,14 @@ u_int utmp_len = HOST_NAME_MAX+1;
  */
 struct early_child {
 	int pipefd;
+	int configfd;
 	int early;		/* Indicates child closed listener */
 	char *id;		/* human readable connection identifier */
 	pid_t pid;
 	struct xaddr addr;
 	int have_addr;
 	int status, have_status;
+	ssize_t sent;
 };
 static struct early_child *children;
 static int children_active;
@@ -201,13 +204,14 @@ child_alloc(void)
 	children = xcalloc(options.max_startups, sizeof(*children));
 	for (i = 0; i < options.max_startups; i++) {
 		children[i].pipefd = -1;
+		children[i].configfd = -1;
 		children[i].pid = -1;
 	}
 }
 
 /* Register a new connection in the children array; child pid comes later */
 static struct early_child *
-child_register(int pipefd, int sockfd)
+child_register(int pipefd, int configfd, int sockfd)
 {
 	int i, lport, rport;
 	char *laddr = NULL, *raddr = NULL;
@@ -217,7 +221,9 @@ child_register(int pipefd, int sockfd)
 	struct sockaddr *sa = (struct sockaddr *)&addr;
 
 	for (i = 0; i < options.max_startups; i++) {
-		if (children[i].pipefd != -1 || children[i].pid > 0)
+		if (children[i].pipefd != -1 ||
+		    children[i].configfd != -1 ||
+		    children[i].pid > 0)
 			continue;
 		child = &(children[i]);
 		break;
@@ -227,7 +233,9 @@ child_register(int pipefd, int sockfd)
 		    " slots full", options.max_startups);
 	}
 	child->pipefd = pipefd;
+	child->configfd = configfd;
 	child->early = 1;
+	child->sent = 0;
 	/* record peer address, if available */
 	if (getpeername(sockfd, sa, &addrlen) == 0 &&
 	   addr_sa_to_xaddr(sa, addrlen, &child->addr) == 0)
@@ -261,9 +269,12 @@ child_finish(struct early_child *child)
 		fatal_f("internal error: children_active underflow");
 	if (child->pipefd != -1)
 		close(child->pipefd);
+	if (child->configfd != -1)
+		close(child->configfd);
 	free(child->id);
 	memset(child, '\0', sizeof(*child));
 	child->pipefd = -1;
+	child->configfd = -1;
 	child->pid = -1;
 	children_active--;
 }
@@ -281,6 +292,10 @@ child_close(struct early_child *child, int force_final, int quiet)
 	if (child->pipefd != -1) {
 		close(child->pipefd);
 		child->pipefd = -1;
+	}
+	if (child->configfd != -1) {
+		close(child->configfd);
+		child->configfd = -1;
 	}
 	if (child->pid == -1 || force_final)
 		child_finish(child);
@@ -425,7 +440,7 @@ close_startup_pipes(void)
 	if (children == NULL)
 		return;
 	for (i = 0; i < options.max_startups; i++) {
-		if (children[i].pipefd != -1)
+		if (children[i].pipefd != -1 || children[i].configfd != -1)
 			child_close(&(children[i]), 1, 1);
 	}
 }
@@ -443,7 +458,8 @@ show_info(void)
 	for (i = 0; i < options.max_startups; i++) {
 		if (children[i].pipefd == -1 && children[i].pid <= 0)
 			continue;
-		logit("child %d: fd=%d pid=%ld %s%s", i, children[i].pipefd,
+		logit("child %d: pipefd=%d configfd=%d pid=%ld %s%s", i,
+		    children[i].pipefd, children[i].configfd,
 		    (long)children[i].pid, children[i].id,
 		    children[i].early ? " (early)" : "");
 	}
@@ -648,15 +664,15 @@ pack_hostkeys(void)
 	return hostkeys;
 }
 
-static void
-send_rexec_state(int fd, struct sshbuf *conf)
+static struct sshbuf *
+pack_config(struct sshbuf *conf)
 {
 	struct sshbuf *m = NULL, *inc = NULL, *hostkeys = NULL;
 	struct include_item *item = NULL;
-	int r, sz;
+	size_t len;
+	int r;
 
-	debug3_f("entering fd = %d config len %zu", fd,
-	    sshbuf_len(conf));
+	debug3_f("d config len %zu", sshbuf_len(conf));
 
 	if ((m = sshbuf_new()) == NULL ||
 	    (inc = sshbuf_new()) == NULL)
@@ -674,6 +690,8 @@ send_rexec_state(int fd, struct sshbuf *conf)
 
 	/*
 	 * Protocol from reexec master to child:
+	 *	uint32  size
+	 *	uint8   type (ignored)
 	 *	string	configuration
 	 *	uint64	timing_secret
 	 *	string	host_keys[] {
@@ -687,23 +705,44 @@ send_rexec_state(int fd, struct sshbuf *conf)
 	 *		string	contents
 	 *	}
 	 */
-	if ((r = sshbuf_put_stringb(m, conf)) != 0 ||
+	if ((r = sshbuf_put_u32(m, 0)) != 0 ||
+	    (r = sshbuf_put_u8(m, 0)) != 0 ||
+	    (r = sshbuf_put_stringb(m, conf)) != 0 ||
 	    (r = sshbuf_put_u64(m, options.timing_secret)) != 0 ||
 	    (r = sshbuf_put_stringb(m, hostkeys)) != 0 ||
 	    (r = sshbuf_put_stringb(m, inc)) != 0)
 		fatal_fr(r, "compose config");
 
-	/* We need to fit the entire message inside the socket send buffer */
-	sz = ROUNDUP(sshbuf_len(m) + 5, 16*1024);
-	if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &sz, sizeof sz) == -1)
-		fatal_f("setsockopt SO_SNDBUF: %s", strerror(errno));
+	if ((len = sshbuf_len(m)) < 5 || len > 0xffffffff)
+		fatal_f("bad length %zu", len);
+	POKE_U32(sshbuf_mutable_ptr(m), len - 4);
 
-	if (ssh_msg_send(fd, 0, m) == -1)
-		error_f("ssh_msg_send failed");
-
-	sshbuf_free(m);
 	sshbuf_free(inc);
 	sshbuf_free(hostkeys);
+
+	debug3_f("done");
+	return m;
+}
+
+static void
+send_rexec_state(int fd, struct sshbuf *m)
+{
+	u_int mlen;
+	int sz;
+
+	debug3_f("entering fd = %d rexec_state len %zu", fd,
+	    sshbuf_len(m));
+
+	mlen = sshbuf_len(m);
+
+	/* We need to fit the entire message inside the socket send buffer */
+	sz = ROUNDUP(mlen, 16*1024);
+	while (sz > 0 &&
+	    setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &sz, sizeof sz) < 0)
+		sz /= 2;
+
+	if (atomicio(vwrite, fd, sshbuf_mutable_ptr(m), mlen) != mlen)
+		error_f("write: %s", strerror(errno));
 
 	debug3_f("done");
 }
@@ -813,12 +852,15 @@ server_listen(void)
  */
 static void
 server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s,
-    int log_stderr)
+    int log_stderr, struct sshbuf *rexec_state)
 {
 	struct pollfd *pfd = NULL;
 	int i, ret, npfd;
 	int oactive = -1, listening = 0, lameduck = 0;
 	int startup_p[2] = { -1 , -1 }, *startup_pollfd;
+	int *config_pollfd;
+	ssize_t len;
+	u_char *ptr;
 	char c = 0;
 	struct sockaddr_storage from;
 	struct early_child *child;
@@ -829,6 +871,7 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s,
 	/* pipes connected to unauthenticated child sshd processes */
 	child_alloc();
 	startup_pollfd = xcalloc(options.max_startups, sizeof(int));
+	config_pollfd = xcalloc(options.max_startups, sizeof(int));
 
 	/*
 	 * Prepare signal mask that we use to block signals that might set
@@ -844,7 +887,7 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s,
 	sigaddset(&nsigset, SIGQUIT);
 
 	/* sized for worst-case */
-	pfd = xcalloc(num_listen_socks + options.max_startups,
+	pfd = xcalloc(num_listen_socks + 2 * options.max_startups,
 	    sizeof(struct pollfd));
 
 	/*
@@ -899,6 +942,12 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s,
 				pfd[npfd].events = POLLIN;
 				startup_pollfd[i] = npfd++;
 			}
+			config_pollfd[i] = -1;
+			if (children[i].configfd != -1) {
+				pfd[npfd].fd = children[i].configfd;
+				pfd[npfd].events = POLLOUT;
+				config_pollfd[i] = npfd++;
+			}
 		}
 
 		/* Wait until a connection arrives or a child exits. */
@@ -912,6 +961,36 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s,
 		if (ret == -1)
 			continue;
 
+		for (i = 0; i < options.max_startups; i++) {
+			if (children[i].configfd == -1 ||
+			    config_pollfd[i] == -1 ||
+			    !(pfd[config_pollfd[i]].revents & (POLLOUT|POLLHUP)))
+				continue;
+			ptr = sshbuf_mutable_ptr(rexec_state);
+			len = sshbuf_len(rexec_state);
+			if (children[i].sent >= len) {
+  config_send_failed:
+				if (children[i].early)
+					listening--;
+				srclimit_done(children[i].pipefd);
+				child_close(&(children[i]), 0, 0);
+				continue;
+			}
+			ptr += children[i].sent;
+			len -= children[i].sent;
+			ret = write(children[i].configfd, ptr, len);
+			if (ret == -1 && (errno == EINTR || errno == EAGAIN))
+				continue;
+			if (ret <= 0)
+				goto config_send_failed;
+			if (ret == len) {
+				/* finished sending config */
+				close(children[i].configfd);
+				children[i].configfd = -1;
+			} else {
+				children[i].sent += ret;
+			}
+		}
 		for (i = 0; i < options.max_startups; i++) {
 			if (children[i].pipefd == -1 ||
 			    startup_pollfd[i] == -1 ||
@@ -1016,7 +1095,7 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s,
 				close(startup_p[0]);
 				close(startup_p[1]);
 				startup_pipe = -1;
-				send_rexec_state(config_s[0], cfg);
+				send_rexec_state(config_s[0], rexec_state);
 				close(config_s[0]);
 				free(pfd);
 				return;
@@ -1027,8 +1106,9 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s,
 			 * the child process the connection. The
 			 * parent continues listening.
 			 */
+			set_nonblock(config_s[0]);
 			listening++;
-			child = child_register(startup_p[0], *newsock);
+			child = child_register(startup_p[0], config_s[0], *newsock);
 			if ((child->pid = fork()) == 0) {
 				/*
 				 * Child.  Close the listening and
@@ -1059,10 +1139,7 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s,
 				debug("Forked child %ld.", (long)child->pid);
 
 			close(startup_p[1]);
-
 			close(config_s[1]);
-			send_rexec_state(config_s[0], cfg);
-			close(config_s[0]);
 			close(*newsock);
 		}
 	}
@@ -1144,6 +1221,7 @@ main(int ac, char **av)
 	mode_t new_umask;
 	struct sshkey *key;
 	struct sshkey *pubkey;
+	struct sshbuf *rexec_state;
 	struct connection_info connection_info;
 	sigset_t sigmask;
 
@@ -1612,12 +1690,14 @@ main(int ac, char **av)
 	/* ignore SIGPIPE */
 	ssh_signal(SIGPIPE, SIG_IGN);
 
+	rexec_state = pack_config(cfg);
+
 	/* Get a connection, either from inetd or a listening TCP socket */
 	if (inetd_flag) {
 		/* Send configuration to ancestor sshd-session process */
 		if (socketpair(AF_UNIX, SOCK_STREAM, 0, config_s) == -1)
 			fatal("socketpair: %s", strerror(errno));
-		send_rexec_state(config_s[0], cfg);
+		send_rexec_state(config_s[0], rexec_state);
 		close(config_s[0]);
 	} else {
 		server_listen();
@@ -1646,8 +1726,11 @@ main(int ac, char **av)
 
 		/* Accept a connection and return in a forked child */
 		server_accept_loop(&sock_in, &sock_out,
-		    &newsock, config_s, log_stderr);
+		    &newsock, config_s, log_stderr, rexec_state);
 	}
+
+	sshbuf_free(rexec_state);
+	rexec_state = NULL;
 
 	/* This is the child processing a new connection. */
 	setproctitle("%s", "[accepted]");
