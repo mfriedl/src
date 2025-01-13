@@ -95,9 +95,8 @@
 
 /* Re-exec fds */
 #define REEXEC_DEVCRYPTO_RESERVED_FD	(STDERR_FILENO + 1)
-#define REEXEC_STARTUP_PIPE_FD		(STDERR_FILENO + 2)
-#define REEXEC_CONFIG_PASS_FD		(STDERR_FILENO + 3)
-#define REEXEC_MIN_FREE_FD		(STDERR_FILENO + 4)
+#define REEXEC_CONFIG_PASS_FD		(STDERR_FILENO + 2)
+#define REEXEC_MIN_FREE_FD		(STDERR_FILENO + 3)
 
 /* Privsep fds */
 #define PRIVSEP_MONITOR_FD		(STDERR_FILENO + 1)
@@ -942,27 +941,23 @@ main(int ac, char **av)
 		fatal("sshbuf_new config buf failed");
 	setproctitle("%s", "[rexeced]");
 	recv_rexec_state(REEXEC_CONFIG_PASS_FD, cfg, &timing_secret);
-	/* close the fd, but keep the slot reserved */
-	if (dup2(devnull, REEXEC_CONFIG_PASS_FD) == -1)
-		fatal("dup2 devnull->config fd: %s", strerror(errno));
 	parse_server_config(&options, "rexec", cfg, &includes, NULL, 1);
 	/* Fill in default values for those options not explicitly set. */
 	fill_default_server_options(&options);
 	options.timing_secret = timing_secret;
 
 	if (!debug_flag && !inetd_flag) {
-		if ((startup_pipe = dup(REEXEC_STARTUP_PIPE_FD)) == -1)
+		if ((startup_pipe = dup(REEXEC_CONFIG_PASS_FD)) == -1)
 			fatal("internal error: no startup pipe");
-		/* close the fd, but keep the slot reserved */
-		if (dup2(devnull, REEXEC_STARTUP_PIPE_FD) == -1)
-			fatal("dup2 devnull->startup fd: %s", strerror(errno));
-
 		/*
 		 * Signal parent that this child is at a point where
 		 * they can go away if they have a SIGHUP pending.
 		 */
 		(void)atomicio(vwrite, startup_pipe, "\0", 1);
 	}
+	/* close the fd, but keep the slot reserved */
+	if (dup2(devnull, REEXEC_CONFIG_PASS_FD) == -1)
+		fatal("dup2 devnull->config fd: %s", strerror(errno));
 
 	/* Check that options are sensible */
 	if (options.authorized_keys_command_user == NULL &&

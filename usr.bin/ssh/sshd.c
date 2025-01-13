@@ -78,9 +78,8 @@
 
 /* Re-exec fds */
 #define REEXEC_DEVCRYPTO_RESERVED_FD	(STDERR_FILENO + 1)
-#define REEXEC_STARTUP_PIPE_FD		(STDERR_FILENO + 2)
-#define REEXEC_CONFIG_PASS_FD		(STDERR_FILENO + 3)
-#define REEXEC_MIN_FREE_FD		(STDERR_FILENO + 4)
+#define REEXEC_CONFIG_PASS_FD		(STDERR_FILENO + 2)
+#define REEXEC_MIN_FREE_FD		(STDERR_FILENO + 3)
 
 extern char *__progname;
 
@@ -168,7 +167,6 @@ struct early_child {
 };
 static struct early_child *children;
 static int children_active;
-static int startup_pipe = -1;		/* in child */
 
 /* sshd_config buffer */
 struct sshbuf *cfg;
@@ -1072,7 +1070,6 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s,
 				close_listen_socks();
 				*sock_in = *newsock;
 				*sock_out = *newsock;
-				startup_pipe = -1;
 				send_rexec_state(config_s[0], cfg);
 				close(config_s[0]);
 				free(pfd);
@@ -1096,7 +1093,6 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s,
 				 * We return from this function to handle
 				 * the connection.
 				 */
-				startup_pipe = config_s[1];
 				close_startup_pipes();
 				close_listen_socks();
 				*sock_in = *newsock;
@@ -1714,8 +1710,8 @@ main(int ac, char **av)
 	if (!debug_flag && !inetd_flag && setsid() == -1)
 		error("setsid: %.100s", strerror(errno));
 
-	debug("rexec start in %d out %d newsock %d pipe %d sock %d/%d",
-	    sock_in, sock_out, newsock, startup_pipe, config_s[0], config_s[1]);
+	debug("rexec start in %d out %d newsock %d config_s %d/%d",
+	    sock_in, sock_out, newsock, config_s[0], config_s[1]);
 	if (!inetd_flag) {
 		if (dup2(newsock, STDIN_FILENO) == -1)
 			fatal("dup2 stdin: %s", strerror(errno));
@@ -1727,15 +1723,7 @@ main(int ac, char **av)
 	if (config_s[1] != REEXEC_CONFIG_PASS_FD) {
 		if (dup2(config_s[1], REEXEC_CONFIG_PASS_FD) == -1)
 			fatal("dup2 config_s: %s", strerror(errno));
-		if (config_s[1] != startup_pipe)
-			close(config_s[1]);
-	}
-	if (startup_pipe == -1)
-		close(REEXEC_STARTUP_PIPE_FD);
-	else if (startup_pipe != REEXEC_STARTUP_PIPE_FD) {
-		if (dup2(startup_pipe, REEXEC_STARTUP_PIPE_FD) == -1)
-			fatal("dup2 startup_pipe: %s", strerror(errno));
-		close(startup_pipe);
+		close(config_s[1]);
 	}
 	log_redirect_stderr_to(NULL);
 	closefrom(REEXEC_MIN_FREE_FD);
