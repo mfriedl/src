@@ -640,6 +640,8 @@ recv_rexec_state(int fd, struct sshbuf *conf, uint64_t *timing_secretp)
 
 	if ((m = sshbuf_new()) == NULL || (inc = sshbuf_new()) == NULL)
 		fatal_f("sshbuf_new failed");
+
+	/* receive config */
 	if (ssh_msg_recv(fd, m) == -1)
 		fatal_f("ssh_msg_recv failed");
 	if ((r = sshbuf_get_u8(m, &ver)) != 0)
@@ -648,7 +650,6 @@ recv_rexec_state(int fd, struct sshbuf *conf, uint64_t *timing_secretp)
 		fatal_f("rexec version mismatch");
 	if ((r = sshbuf_get_string(m, &cp, &len)) != 0 || /* XXX _direct */
 	    (r = sshbuf_get_u64(m, timing_secretp)) != 0 ||
-	    (r = sshbuf_froms(m, &hostkeys)) != 0 ||
 	    (r = sshbuf_get_stringb(m, inc)) != 0)
 		fatal_fr(r, "parse config");
 
@@ -666,6 +667,13 @@ recv_rexec_state(int fd, struct sshbuf *conf, uint64_t *timing_secretp)
 		TAILQ_INSERT_TAIL(&includes, item, entry);
 	}
 
+	/* receive hostkeys */
+	sshbuf_reset(m);
+	if (ssh_msg_recv(fd, m) == -1)
+		fatal_f("ssh_msg_recv failed");
+	if ((r = sshbuf_get_u8(m, NULL)) != 0 ||
+	    (r = sshbuf_froms(m, &hostkeys)) != 0)
+		fatal_fr(r, "parse config");
 	parse_hostkeys(hostkeys);
 
 	free(cp);
