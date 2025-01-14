@@ -266,6 +266,7 @@ child_finish(struct early_child *child)
 		fatal_f("internal error: children_active underflow");
 	if (child->pipefd != -1)
 		close(child->pipefd);
+	sshbuf_free(child->config);
 	free(child->id);
 	memset(child, '\0', sizeof(*child));
 	child->pipefd = -1;
@@ -286,10 +287,6 @@ child_close(struct early_child *child, int force_final, int quiet)
 	if (child->pipefd != -1) {
 		close(child->pipefd);
 		child->pipefd = -1;
-	}
-	if (child->config != NULL) {
-		sshbuf_free(child->config);
-		child->config = NULL;
 	}
 	if (child->pid == -1 || force_final)
 		child_finish(child);
@@ -323,6 +320,14 @@ child_reap(struct early_child *child)
 {
 	LogLevel level = SYSLOG_LEVEL_DEBUG1;
 	int was_crash, penalty_type = SRCLIMIT_PENALTY_NONE;
+	const char *child_status;
+
+	if (child->config)
+		child_status = " (sending config)";
+	else if (child->early)
+		child_status = " (early)";
+	else
+		child_status = "";
 
 	/* Log exit information */
 	if (WIFSIGNALED(child->status)) {
@@ -334,54 +339,50 @@ child_reap(struct early_child *child)
 			level = SYSLOG_LEVEL_ERROR;
 		do_log2(level, "session process %ld for %s killed by "
 		    "signal %d%s", (long)child->pid, child->id,
-		    WTERMSIG(child->status), child->early ? " (early)" : "");
+		    WTERMSIG(child->status), child_status);
 		if (was_crash)
 			penalty_type = SRCLIMIT_PENALTY_CRASH;
 	} else if (!WIFEXITED(child->status)) {
 		penalty_type = SRCLIMIT_PENALTY_CRASH;
 		error("session process %ld for %s terminated abnormally, "
 		    "status=0x%x%s", (long)child->pid, child->id, child->status,
-		    child->early ? " (early)" : "");
+		    child_status);
 	} else {
 		/* Normal exit. We care about the status */
 		switch (WEXITSTATUS(child->status)) {
 		case 0:
 			debug3_f("preauth child %ld for %s completed "
-			    "normally %s", (long)child->pid, child->id,
-			    child->early ? " (early)" : "");
+			    "normally%s", (long)child->pid, child->id,
+			    child_status);
 			break;
 		case EXIT_LOGIN_GRACE:
 			penalty_type = SRCLIMIT_PENALTY_GRACE_EXCEEDED;
 			logit("Timeout before authentication for %s, "
 			    "pid = %ld%s", child->id, (long)child->pid,
-			    child->early ? " (early)" : "");
+			    child_status);
 			break;
 		case EXIT_CHILD_CRASH:
 			penalty_type = SRCLIMIT_PENALTY_CRASH;
 			logit("Session process %ld unpriv child crash for %s%s",
-			    (long)child->pid, child->id,
-			    child->early ? " (early)" : "");
+			    (long)child->pid, child->id, child_status);
 			break;
 		case EXIT_AUTH_ATTEMPTED:
 			penalty_type = SRCLIMIT_PENALTY_AUTHFAIL;
 			debug_f("preauth child %ld for %s exited "
-			    "after unsuccessful auth attempt %s",
-			    (long)child->pid, child->id,
-			    child->early ? " (early)" : "");
+			    "after unsuccessful auth attempt%s",
+			    (long)child->pid, child->id, child_status);
 			break;
 		case EXIT_CONFIG_REFUSED:
 			penalty_type = SRCLIMIT_PENALTY_REFUSECONNECTION;
 			debug_f("preauth child %ld for %s prohibited by"
-			    "RefuseConnection %s",
-			    (long)child->pid, child->id,
-			    child->early ? " (early)" : "");
+			    "RefuseConnection%s",
+			    (long)child->pid, child->id, child_status);
 			break;
 		default:
 			penalty_type = SRCLIMIT_PENALTY_NOAUTH;
 			debug_f("preauth child %ld for %s exited "
 			    "with status %d%s", (long)child->pid, child->id,
-			    WEXITSTATUS(child->status),
-			    child->early ? " (early)" : "");
+			    WEXITSTATUS(child->status), child_status);
 			break;
 		}
 	}
@@ -444,6 +445,7 @@ static void
 show_info(void)
 {
 	int i;
+	const char *child_status;
 
 	/* XXX print listening sockets here too */
 	if (children == NULL)
@@ -452,9 +454,14 @@ show_info(void)
 	for (i = 0; i < options.max_startups; i++) {
 		if (children[i].pipefd == -1 && children[i].pid <= 0)
 			continue;
+		if (children[i].config)
+			child_status = " (sending config)";
+		else if (children[i].early)
+			child_status = " (early)";
+		else
+			child_status = "";
 		logit("child %d: fd=%d pid=%ld %s%s", i, children[i].pipefd,
-		    (long)children[i].pid, children[i].id,
-		    children[i].early ? " (early)" : "");
+		    (long)children[i].pid, children[i].id, child_status);
 	}
 	srclimit_penalty_info();
 }
@@ -851,7 +858,7 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s,
     int log_stderr)
 {
 	struct pollfd *pfd = NULL;
-	int i, ret, npfd;
+	int i, ret, npfd, r;
 	int oactive = -1, listening = 0, lameduck = 0;
 	int *startup_pollfd;
 	ssize_t len;
@@ -933,10 +940,9 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s,
 			startup_pollfd[i] = -1;
 			if (children[i].pipefd != -1) {
 				pfd[npfd].fd = children[i].pipefd;
+				pfd[npfd].events = POLLIN;
 				if (children[i].config != NULL)
-					pfd[npfd].events = POLLOUT;
-				else
-					pfd[npfd].events = POLLIN;
+					pfd[npfd].events |= POLLOUT;
 				startup_pollfd[i] = npfd++;
 			}
 		}
@@ -974,7 +980,9 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s,
 				sshbuf_free(children[i].config);
 				children[i].config = NULL;
 			} else {
-				sshbuf_consume(children[i].config, ret);
+				if ((r = sshbuf_consume(children[i].config,
+				    ret)) != 0)
+					fatal_r(r, "config buf not consistent");
 			}
 		}
 		for (i = 0; i < options.max_startups; i++) {
@@ -1000,6 +1008,15 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s,
 				child_close(&(children[i]), 0, 0);
 				break;
 			case 1:
+				if (children[i].config) {
+					error_f("startup pipe %d (fd=%d)"
+					    "early read", i, children[i].pipefd);
+					if (children[i].early)
+						listening--;
+					srclimit_done(children[i].pipefd);
+					child_close(&(children[i]), 0, 0);
+					break;
+				}
 				if (children[i].early && c == '\0') {
 					/* child has finished preliminaries */
 					listening--;
