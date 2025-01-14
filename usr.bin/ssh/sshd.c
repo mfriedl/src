@@ -738,10 +738,9 @@ send_rexec_state(int fd, struct sshbuf *config)
 	mlen = sshbuf_len(m);
 
 	/* We need to fit the entire message inside the socket send buffer */
-	sz = ROUNDUP(mlen, 16*1024);
-	while (sz > 0 &&
-	    setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &sz, sizeof sz) < 0)
-		sz /= 2;
+	sz = ROUNDUP(sshbuf_len(m) + 5, 16*1024);
+	if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &sz, sizeof sz) == -1)
+		fatal_f("setsockopt SO_SNDBUF: %s", strerror(errno));
 
 	if (atomicio(vwrite, fd, sshbuf_mutable_ptr(m), mlen) != mlen)
 		error_f("write: %s", strerror(errno));
