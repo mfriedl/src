@@ -1049,9 +1049,11 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s,
 			case 1:
 				if (children[i].config) {
 					error_f("startup pipe %d (fd=%d)"
-					    "early read", i, children[i].pipefd);
+					    " early read", i, children[i].pipefd);
 					if (children[i].early)
 						listening--;
+					if (children[i].pid > 0)
+						kill(children[i].pid, SIGTERM);
 					srclimit_done(children[i].pipefd);
 					child_close(&(children[i]), 0, 0);
 					break;
