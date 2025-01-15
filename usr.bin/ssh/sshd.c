@@ -741,33 +741,39 @@ pack_config(struct sshbuf *conf)
  *		string certificate
  *	}
  */
+/*
+ * This function is used only if inet_flag or debug_flag is set,
+ * otherwise the data is sent from the main poll loop.
+ * It sends the config from a child process back to the parent.
+ * The parent will read the config after exec.
+ */
 static void
 send_rexec_state(int fd)
 {
 	struct sshbuf *keys;
 	u_int mlen;
-	int sz;
+	pid_t pid;
+
+	if ((pid = fork()) == -1)
+		fatal_f("fork failed: %s", strerror(errno));
+	if (pid != 0)
+		return;
 
 	debug3_f("entering fd = %d config len %zu", fd,
 	    sshbuf_len(config));
-
-	keys = pack_hostkeys();
-
-	/* We need to fit the entire message inside the socket send buffer */
-	sz = ROUNDUP(sshbuf_len(config) + sshbuf_len(keys) + 5, 16*1024);
-	if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &sz, sizeof sz) == -1)
-		fatal_f("setsockopt SO_SNDBUF: %s", strerror(errno));
 
 	mlen = sshbuf_len(config);
 	if (atomicio(vwrite, fd, sshbuf_mutable_ptr(config), mlen) != mlen)
 		error_f("write: %s", strerror(errno));
 
+	keys = pack_hostkeys();
 	mlen = sshbuf_len(keys);
 	if (atomicio(vwrite, fd, sshbuf_mutable_ptr(keys), mlen) != mlen)
 		error_f("write: %s", strerror(errno));
 
 	sshbuf_free(keys);
 	debug3_f("done");
+	exit(0);
 }
 
 /*
