@@ -222,6 +222,23 @@ If
 .Ic tolerate
 is set to 0 then the times are not verified at all.
 This is the default setting.
+.It Ic set halfopen_limit Ar limit
+Enable stateless COOKIE notifications if there are more than
+.Ar limit
+unauthenticated connections.
+This option reduces the memory footprint of
+.Xr iked 8
+and delays the allocation of full IKEv2 SA data structures.
+The allocations are not delayed by default.
+.It Ic set halfopen_addr_limit Ar limit
+Specifies a
+.Ar limit
+for how many unauthenticated connections from a single address
+are allowed before stateless COOKIE notifications are
+enabled.
+The option is only active if the global
+.Ic halfopen_limit
+is also enabled.
 .It Ic set vendorid
 Send OpenIKED Vendor ID payload.
 This is the default.

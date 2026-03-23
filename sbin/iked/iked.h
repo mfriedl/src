@@ -571,6 +571,7 @@ RB_HEAD(iked_addrpool6, iked_sa);
 
 struct iked_stats {
 	uint64_t	ikes_sa_created;
+	uint64_t	ikes_sa_halfopen_current;	/* gauge */
 	uint64_t	ikes_sa_established_total;
 	uint64_t	ikes_sa_established_current;	/* gauge */
 	uint64_t	ikes_sa_established_failures;
@@ -596,6 +597,10 @@ struct iked_stats {
 	uint64_t	ikes_update_addresses_sent;
 	uint64_t	ikes_dpd_sent;
 	uint64_t	ikes_keepalive_sent;
+
+	uint64_t	ikes_cookies_sent;
+	uint64_t	ikes_cookies_ok;
+	uint64_t	ikes_cookies_fail;
 };
 
 #define ikestat_add(env, c, n)	do { env->sc_stats.c += (n); } while(0)
@@ -876,6 +881,8 @@ struct iked_static {
 	in_port_t		 st_nattport;
 	int			 st_stickyaddress; /* addr per DSTID  */
 	int			 st_vendorid;
+	size_t			 st_halfopen_limit;
+	size_t			 st_halfopen_addr_limit;
 };
 
 struct iked {
@@ -896,6 +903,8 @@ struct iked {
 #define sc_nattport		sc_static.st_nattport
 #define sc_stickyaddress	sc_static.st_stickyaddress
 #define sc_vendorid		sc_static.st_vendorid
+#define sc_halfopen_limit	sc_static.st_halfopen_limit
+#define sc_halfopen_addr_limit	sc_static.st_halfopen_addr_limit
 
 	struct iked_policies		 sc_policies;
 	struct iked_policy		*sc_defaultcon;
@@ -916,6 +925,7 @@ struct iked {
 
 	struct iked_halfopens		 sc_halfopens;
 	size_t				 sc_halfopen_count;
+	struct ibuf			*sc_halfopen_secret;
 
 	struct iked_stats		 sc_stats;
 

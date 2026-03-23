@@ -94,6 +94,8 @@ void	 ikev2_disable_timer(struct iked *, struct iked_sa *);
 
 void	 ikev2_resp_recv(struct iked *, struct iked_message *,
 	    struct ike_header *);
+int	 ikev2_check_halfopen(struct iked *, struct iked_message *,
+	    struct ike_header *);
 int	 ikev2_resp_ike_sa_init(struct iked *, struct iked_message *);
 int	 ikev2_resp_ike_eap(struct iked *, struct iked_sa *,
 	    struct iked_message *);
@@ -2946,6 +2948,12 @@ ikev2_resp_recv(struct iked *env, struct iked_message *msg,
 			log_debug("%s: SA already exists", __func__);
 			return;
 		}
+
+		/* if too many half open SAs, delay allocation */
+		if (env->sc_halfopen_limit &&
+		    ikev2_check_halfopen(env, msg, hdr) != 0)
+			return;
+
 		if ((msg->msg_sa = sa_new(env,
 		    betoh64(hdr->ike_ispi), betoh64(hdr->ike_rspi),
 		    0, msg->msg_policy)) == NULL) {
@@ -2953,7 +2961,8 @@ ikev2_resp_recv(struct iked *env, struct iked_message *msg,
 			return;
 		}
 		/* Record half open */
-		sa_ho_insert(env, msg->msg_sa, msg);
+		if (env->sc_halfopen_limit)
+			sa_ho_insert(env, msg->msg_sa, msg);
 		/* Setup exchange timeout. */
 		timer_set(env, &msg->msg_sa->sa_timer,
 		    ikev2_init_ike_sa_timeout, msg->msg_sa);
@@ -3079,6 +3088,153 @@ ikev2_resp_recv(struct iked *env, struct iked_message *msg,
 	default:
 		break;
 	}
+}
+
+int
+ikev2_check_halfopen(struct iked *env, struct iked_message *msg,
+    struct ike_header *hdr)
+{
+	struct iked_sa			 sah;
+	struct iked_message		 resp;
+	struct ikev2_payload		*pld;
+	struct ikev2_notify		*n;
+	struct ibuf			*buf, *cookie = NULL;
+	struct sockaddr_storage		 peer;
+	EVP_MD_CTX			*ctx;
+	u_int				 len;
+
+	/* check if cookie is required */
+	if (env->sc_halfopen_count < env->sc_halfopen_limit &&
+	    sa_ho_get_count(env, msg) < env->sc_halfopen_addr_limit) {
+		/* discard unused secret */
+		if (env->sc_halfopen_count == 0 &&
+		    env->sc_halfopen_secret != NULL) {
+			ibuf_free(env->sc_halfopen_secret);
+			env->sc_halfopen_secret = NULL;
+		}
+		return (0);
+	}
+
+	bzero(&sah, sizeof(sah));
+	sah.sa_hdr.sh_ispi = betoh64(hdr->ike_ispi);
+
+	if (ikev2_pld_parse_quick(env, hdr, msg, msg->msg_offset) != 0) {
+		log_info("%s: failed to parse message",
+		    SPI_SH(&sah.sa_hdr, __func__));
+		return (-1);
+	}
+
+	/* nonce is required */
+	if (ibuf_length(msg->msg_nonce) == 0) {
+		log_info("%s: initiator didn't send nonce",
+		    SPI_SH(&sah.sa_hdr, __func__));
+		return (-1);
+	}
+
+	if (env->sc_halfopen_secret == NULL) {
+		env->sc_halfopen_secret = ibuf_random(IKED_NONCE_SIZE);
+		if (env->sc_halfopen_secret == NULL) {
+			log_info("%s: cannot generate secret", __func__);
+			return (-1);
+		}
+	}
+
+	/* compute cookie */
+	log_debug("%s: compute cookie", SPI_SH(&sah.sa_hdr, __func__));
+	memcpy(&peer, &msg->msg_peer, msg->msg_peerlen);
+	socket_setport((struct sockaddr *)&peer, 0);
+
+	len = SHA256_DIGEST_LENGTH;
+	if ((cookie = ibuf_new(NULL, len)) == NULL)
+		return (-1);
+	if ((ctx = EVP_MD_CTX_new()) == NULL ||
+	    EVP_DigestInit_ex(ctx, EVP_sha256(), NULL) != 1 ||
+	    EVP_DigestUpdate(ctx, &peer, msg->msg_peerlen) != 1 ||
+	    EVP_DigestUpdate(ctx, &sah.sa_hdr.sh_ispi,
+	    sizeof(sah.sa_hdr.sh_ispi)) != 1 ||
+	    EVP_DigestUpdate(ctx, ibuf_data(msg->msg_nonce),
+	    ibuf_length(msg->msg_nonce)) != 1 ||
+	    EVP_DigestUpdate(ctx, ibuf_data(env->sc_halfopen_secret),
+	    ibuf_length(env->sc_halfopen_secret)) != 1 ||
+	    EVP_DigestFinal_ex(ctx, ibuf_data(cookie), &len) != 1) {
+		EVP_MD_CTX_free(ctx);
+		ibuf_free(cookie);
+		return (-1);
+	}
+	EVP_MD_CTX_free(ctx);
+	print_hex(ibuf_data(cookie), 0, ibuf_size(cookie));
+
+	/* verify cookie if set */
+	if (ibuf_length(msg->msg_cookie) == len &&
+	    memcmp(ibuf_data(msg->msg_cookie), ibuf_data(cookie), len) == 0) {
+		log_debug("%s: cookie ok", SPI_SH(&sah.sa_hdr, __func__));
+		/* ok, finally create SA */
+		ibuf_free(cookie);
+		/* discard parsed attributes because msg will be parsed again */
+		ibuf_free(msg->msg_cookie);
+		ibuf_free(msg->msg_nonce);
+		msg->msg_cookie = NULL;
+		msg->msg_nonce = NULL;
+		ikestat_inc(env, ikes_cookies_ok);
+		return (0);
+	}
+
+	if (ibuf_length(msg->msg_cookie)) {
+		log_info("%s: cookie mismatch", SPI_SH(&sah.sa_hdr, __func__));
+		print_hex(ibuf_data(msg->msg_cookie), 0,
+		    ibuf_size(msg->msg_cookie));
+		ikestat_inc(env, ikes_cookies_fail);
+	}
+
+	log_debug("%s: sending cookie", SPI_SH(&sah.sa_hdr, __func__));
+
+	/* otherwise send cookie, initiator needs to reflect cookie */
+	if ((buf = ikev2_msg_init(env, &resp,
+	    &msg->msg_peer, msg->msg_peerlen,
+	    &msg->msg_local, msg->msg_locallen, 1)) == NULL)
+		goto done;
+
+	resp.msg_fd = msg->msg_fd;
+	resp.msg_natt = msg->msg_natt;
+	resp.msg_msgid = 0;
+
+	/* IKE header */
+	if ((hdr = ikev2_add_header(buf, &sah, resp.msg_msgid,
+	    IKEV2_PAYLOAD_NOTIFY, IKEV2_EXCHANGE_IKE_SA_INIT,
+	    IKEV2_FLAG_RESPONSE)) == NULL)
+		goto done;
+
+	/* COOKIE payload */
+	if ((pld = ikev2_add_payload(buf)) == NULL)
+		goto done;
+	if ((n = ibuf_reserve(buf, sizeof(*n))) == NULL)
+		goto done;
+	n->n_protoid = IKEV2_SAPROTO_NONE;
+	n->n_spisize = 0;
+	n->n_type = htobe16(IKEV2_N_COOKIE);
+	if (ikev2_add_buf(buf, cookie) == -1)
+		goto done;
+	len = sizeof(*n) + ibuf_size(cookie);
+
+	log_debug("%s: added cookie, len %zu", SPI_SH(&sah.sa_hdr, __func__),
+	    ibuf_size(cookie));
+	print_hex(ibuf_data(cookie), 0, ibuf_size(cookie));
+
+	if (ikev2_next_payload(pld, len, IKEV2_PAYLOAD_NONE) == -1)
+		goto done;
+
+	if (ikev2_set_header(hdr, ibuf_size(buf) - sizeof(*hdr)) == -1)
+		goto done;
+
+	(void)ikev2_pld_parse(env, hdr, &resp, 0);
+
+	(void)ikev2_msg_send(env, &resp);
+	ikestat_inc(env, ikes_cookies_sent);
+
+ done:
+	ikev2_msg_cleanup(env, &resp);
+	ibuf_free(cookie);
+	return (-1);
 }
 
 ssize_t

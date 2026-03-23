@@ -2119,12 +2119,13 @@ ikev2_pld_eap(struct iked *env, struct ikev2_payload *pld,
 	return (0);
 }
 
-/* parser for the initial IKE_AUTH payload, does not require msg_sa */
+/* parser for the initial SA_INIT/IKE_AUTH payload, does not require msg_sa */
 int
 ikev2_pld_parse_quick(struct iked *env, struct ike_header *hdr,
     struct iked_message *msg, size_t offset)
 {
 	struct ikev2_payload	 pld;
+	struct ikev2_notify	 n;
 	struct ikev2_frag_payload frag;
 	uint8_t			*msgbuf = ibuf_data(msg->msg_data);
 	uint8_t			*buf;
@@ -2177,6 +2178,30 @@ ikev2_pld_parse_quick(struct iked *env, struct ike_header *hdr,
 		left = betoh16(pld.pld_length) - sizeof(pld);
 
 		switch (payload) {
+		case IKEV2_PAYLOAD_NONCE:
+			len = left;
+			buf = msgbuf + offset;
+			if (len == 0)
+				return (-1);
+			if (ibuf_length(msg->msg_nonce))
+				return (-1);
+			if ((msg->msg_nonce = ibuf_new(buf, len)) == NULL)
+				return (-1);
+			break;
+		case IKEV2_PAYLOAD_NOTIFY:
+			if (ikev2_validate_notify(msg, offset, left, &n))
+				return (-1);
+			if (betoh16(n.n_type) != IKEV2_N_COOKIE)
+				break;
+			len = left - sizeof(n);
+			buf = msgbuf + offset + sizeof(n);
+			if (len == 0)
+				return (-1);
+			if (ibuf_length(msg->msg_cookie))
+				return (-1);
+			if ((msg->msg_cookie = ibuf_new(buf, len)) == NULL)
+				return (-1);
+			break;
 		case IKEV2_PAYLOAD_SKF:
 			len = left;
 			buf = msgbuf + offset;

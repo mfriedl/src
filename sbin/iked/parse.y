@@ -112,6 +112,8 @@ static long		 ocsp_maxage = -1;
 static int		 cert_partial_chain = 0;
 static struct iked_radopts
 			 radauth, radacct;
+static int		 halfopen_limit = 0;
+static int		 halfopen_addr_limit = 0;
 
 struct iked_transform ikev2_default_ike_transforms[] = {
 	{ IKEV2_XFORMTYPE_ENCR, IKEV2_XFORMENCR_AES_CBC, 256 },
@@ -458,6 +460,7 @@ typedef struct {
 %token	REQUEST IFACE
 %token	RADIUS ACCOUNTING SERVER SECRET MAX_TRIES MAX_FAILOVERS
 %token	CLIENT DAE LISTEN ON NATT
+%token	HALFOPEN_LIMIT HALFOPEN_ADDR_LIMIT
 %token	<v.string>		STRING
 %token	<v.number>		NUMBER
 %type	<v.string>		string
@@ -553,6 +556,12 @@ set		: SET ACTIVE	{ passive = 0; }
 				YYERROR;
 			}
 			dpd_interval = $3;
+		}
+		| SET HALFOPEN_LIMIT NUMBER	{
+			halfopen_limit = $3;
+		}
+		| SET HALFOPEN_ADDR_LIMIT NUMBER	{
+			halfopen_addr_limit = $3;
 		}
 		;
 
@@ -1589,6 +1598,8 @@ lookup(char *s)
 		{ "fragmentation",	FRAGMENTATION },
 		{ "from",		FROM },
 		{ "group",		GROUP },
+		{ "halfopen_addr_limit",HALFOPEN_ADDR_LIMIT },
+		{ "halfopen_limit",	HALFOPEN_LIMIT },
 		{ "iface",		IFACE },
 		{ "ike",		IKEV1 },
 		{ "ikelifetime",	IKELIFETIME },
@@ -2033,6 +2044,8 @@ parse_config(const char *filename, struct iked *x_env)
 	radauth.max_failovers = 0;
 	radacct.max_tries = 3;
 	radacct.max_failovers = 0;
+	halfopen_limit = 0;
+	halfopen_addr_limit = 0;
 
 	if (env->sc_opts & IKED_OPT_PASSIVE)
 		passive = 1;
@@ -2055,6 +2068,14 @@ parse_config(const char *filename, struct iked *x_env)
 	env->sc_vendorid = vendorid;
 	env->sc_radauth = radauth;
 	env->sc_radacct = radacct;
+	if (halfopen_limit && !halfopen_addr_limit) {
+		/* default to 10% per addr */
+		halfopen_addr_limit = halfopen_limit / 10;
+		if (!halfopen_addr_limit)
+			halfopen_addr_limit = 1;
+	}
+	env->sc_halfopen_limit = halfopen_limit;
+	env->sc_halfopen_addr_limit = halfopen_addr_limit;
 
 	if (!rules)
 		log_warnx("%s: no valid configuration rules found",

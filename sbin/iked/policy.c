@@ -1300,6 +1300,7 @@ sa_ho_insert(struct iked *env, struct iked_sa *sa, struct iked_message *msg)
 	sa->sa_halfopen = 1;
 	sa->sa_peer_initial = key.ho_peer_initial;
 	ho->ho_count++;
+	ikestat_inc(env, ikes_sa_halfopen_current);
 	log_info("%s: ho_count %zu %s", SPI_SA(sa, __func__), ho->ho_count,
 	    print_addr(&sa->sa_peer_initial));
 	return (0);
@@ -1323,6 +1324,7 @@ sa_ho_remove(struct iked *env, struct iked_sa *sa)
 	env->sc_halfopen_count--;
 	sa->sa_halfopen = 0;
 	ho->ho_count--;
+	ikestat_dec(env, ikes_sa_halfopen_current);
 	log_info("%s: ho_count %zu %s", SPI_SA(sa, __func__), ho->ho_count,
 	    print_addr(&sa->sa_peer_initial));
 	if (ho->ho_count == 0) {
