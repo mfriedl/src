@@ -52,6 +52,8 @@
 void	 ikev2_info(struct iked *, struct imsg *, int);
 void	 ikev2_info_sa(struct iked *, struct imsg *, int, const char *,
 	    struct iked_sa *);
+void	 ikev2_info_halfopen(struct iked *, struct imsg *, int, const char *,
+	    struct iked_halfopen *);
 void	 ikev2_info_csa(struct iked *, struct imsg *, int, const char *,
 	    struct iked_childsa *);
 void	 ikev2_info_flow(struct iked *, struct imsg *, int, const char *,
@@ -2950,6 +2952,8 @@ ikev2_resp_recv(struct iked *env, struct iked_message *msg,
 			log_debug("%s: failed to get new SA", __func__);
 			return;
 		}
+		/* Record half open */
+		sa_ho_insert(env, msg->msg_sa, msg);
 		/* Setup exchange timeout. */
 		timer_set(env, &msg->msg_sa->sa_timer,
 		    ikev2_init_ike_sa_timeout, msg->msg_sa);
@@ -3057,6 +3061,8 @@ ikev2_resp_recv(struct iked *env, struct iked_message *msg,
 			sa_state(env, sa, IKEV2_STATE_CLOSED);
 			return;
 		}
+		sa_ho_remove(env, sa);
+
 		break;
 	case IKEV2_EXCHANGE_CREATE_CHILD_SA:
 		if (ikev2_resp_create_child_sa(env, msg) != 0) {
@@ -7573,6 +7579,31 @@ ikev2_info_sa(struct iked *env, struct imsg *imsg, int dolog, const char *msg,
 }
 
 void
+ikev2_info_halfopen(struct iked *env, struct imsg *imsg, int dolog, const char *msg,
+    struct iked_halfopen *ho)
+{
+	char		*buf;
+	int		 buflen;
+
+	buflen = asprintf(&buf,
+	    "%s: %s count %zu/%zu\n", msg,
+	    print_addr(&ho->ho_peer_initial),
+	    ho->ho_count, env->sc_halfopen_count);
+
+	if (buflen == -1 || buf == NULL)
+		return;
+
+	if (dolog) {
+		if (buflen > 1)
+			buf[buflen - 1] = '\0';
+		log_debug("%s", buf);
+	} else
+		proc_compose(&env->sc_ps, PROC_CONTROL, IMSG_CTL_SHOW_SA,
+		    buf, buflen + 1);
+	free(buf);
+}
+
+void
 ikev2_info_csa(struct iked *env, struct imsg *imsg, int dolog, const char *msg,
     struct iked_childsa *csa)
 {
@@ -7659,6 +7690,7 @@ void
 ikev2_info(struct iked *env, struct imsg *imsg, int dolog)
 {
 	struct iked_sa			*sa;
+	struct iked_halfopen		*ho;
 	struct iked_childsa		*csa, *ipcomp;
 	struct iked_flow		*flow;
 
@@ -7686,6 +7718,9 @@ ikev2_info(struct iked *env, struct imsg *imsg, int dolog)
 	}
 	RB_FOREACH(sa, iked_dstid_sas, &env->sc_dstid_sas) {
 		ikev2_info_sa(env, imsg, dolog, "iked_dstid_sas", sa);
+	}
+	RB_FOREACH(ho, iked_halfopens, &env->sc_halfopens) {
+		ikev2_info_halfopen(env, imsg, dolog, "iked_halfopens", ho);
 	}
 	if (dolog)
 		return;

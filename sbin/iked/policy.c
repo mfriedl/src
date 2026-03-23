@@ -41,6 +41,8 @@ static __inline int
 static __inline int
 	 sa_dstid_cmp(struct iked_sa *, struct iked_sa *);
 static __inline int
+	 ho_cmp(struct iked_halfopen *, struct iked_halfopen *);
+static __inline int
 	 user_cmp(struct iked_user *, struct iked_user *);
 static __inline int
 	 childsa_cmp(struct iked_childsa *, struct iked_childsa *);
@@ -67,6 +69,7 @@ policy_init(struct iked *env)
 	TAILQ_INIT(&env->sc_raddaeclients);
 	RB_INIT(&env->sc_users);
 	RB_INIT(&env->sc_sas);
+	RB_INIT(&env->sc_halfopens);
 	RB_INIT(&env->sc_dstid_sas);
 	RB_INIT(&env->sc_activesas);
 	RB_INIT(&env->sc_activeflows);
@@ -1249,8 +1252,89 @@ flow_equal(struct iked_flow *a, struct iked_flow *b)
 	return (flow_cmp(a, b) == 0);
 }
 
+static __inline int
+ho_cmp(struct iked_halfopen *a, struct iked_halfopen *b)
+{
+	return sockaddr_cmp((struct sockaddr *)&a->ho_peer_initial,
+	    (struct sockaddr *)&b->ho_peer_initial, 128);
+}
+
+size_t
+sa_ho_get_count(struct iked *env, struct iked_message *msg)
+{
+	struct iked_halfopen	*ho, key;
+
+	key.ho_peer_initial = msg->msg_peer;
+	socket_setport((struct sockaddr *)&key.ho_peer_initial, 0);
+	ho = RB_FIND(iked_halfopens, &env->sc_halfopens, &key);
+	return ho ? ho->ho_count : 0;
+}
+
+int
+sa_ho_insert(struct iked *env, struct iked_sa *sa, struct iked_message *msg)
+{
+	struct iked_halfopen	*ho, key;
+
+	if (sa->sa_halfopen) {
+		log_warnx("%s: sa %p is halfopen", SPI_SA(sa, __func__), sa);
+		return (-1);
+	}
+
+	bzero(&key, sizeof(key));
+	key.ho_peer_initial = msg->msg_peer;
+	socket_setport((struct sockaddr *)&key.ho_peer_initial, 0);
+	ho = RB_FIND(iked_halfopens, &env->sc_halfopens, &key);
+	if (ho == NULL) {
+		if ((ho = calloc(1, sizeof(*ho))) == NULL) {
+			log_warnx("%s: calloc failed", SPI_SA(sa, __func__));
+			return (-1);
+		}
+		*ho = key;
+		if (RB_INSERT(iked_halfopens, &env->sc_halfopens, ho)) {
+			log_warnx("%s: ho", SPI_SA(sa, __func__));
+			free(ho);
+			return (-1);
+		}
+	}
+	env->sc_halfopen_count++;
+	sa->sa_halfopen = 1;
+	sa->sa_peer_initial = key.ho_peer_initial;
+	ho->ho_count++;
+	log_info("%s: ho_count %zu %s", SPI_SA(sa, __func__), ho->ho_count,
+	    print_addr(&sa->sa_peer_initial));
+	return (0);
+}
+
+int
+sa_ho_remove(struct iked *env, struct iked_sa *sa)
+{
+	struct iked_halfopen	*ho, key;
+
+	if (!sa->sa_halfopen)
+		return (-1);
+
+	key.ho_peer_initial = sa->sa_peer_initial;
+	ho = RB_FIND(iked_halfopens, &env->sc_halfopens, &key);
+	if (ho == NULL) {
+		log_warnx("%s: sa marked half open, but not recorded",
+		    SPI_SA(sa, __func__));
+		return (-1);
+	}
+	env->sc_halfopen_count--;
+	sa->sa_halfopen = 0;
+	ho->ho_count--;
+	log_info("%s: ho_count %zu %s", SPI_SA(sa, __func__), ho->ho_count,
+	    print_addr(&sa->sa_peer_initial));
+	if (ho->ho_count == 0) {
+		RB_REMOVE(iked_halfopens, &env->sc_halfopens, ho);
+		free(ho);
+	}
+	return (0);
+}
+
 RB_GENERATE(iked_sas, iked_sa, sa_entry, sa_cmp);
 RB_GENERATE(iked_dstid_sas, iked_sa, sa_dstid_entry, sa_dstid_cmp);
+RB_GENERATE(iked_halfopens, iked_halfopen, ho_entry, ho_cmp);
 RB_GENERATE(iked_addrpool, iked_sa, sa_addrpool_entry, sa_addrpool_cmp);
 RB_GENERATE(iked_addrpool6, iked_sa, sa_addrpool6_entry, sa_addrpool6_cmp);
 RB_GENERATE(iked_users, iked_user, usr_entry, user_cmp);

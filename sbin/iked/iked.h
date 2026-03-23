@@ -405,6 +405,13 @@ struct iked_ipcomp {
 	uint8_t				 ic_transform;	/* transform */
 };
 
+struct iked_halfopen {
+	struct sockaddr_storage		 ho_peer_initial;
+	size_t				 ho_count;
+	RB_ENTRY(iked_halfopen)		 ho_entry;
+};
+RB_HEAD(iked_halfopens, iked_halfopen);
+
 struct iked_sastats {
 	uint64_t			 sas_ipackets;
 	uint64_t			 sas_opackets;
@@ -429,6 +436,9 @@ struct iked_sa {
 	struct iked_addr		 sa_peer_loaded;/* MOBIKE */
 	struct iked_addr		 sa_local;
 	int				 sa_fd;
+
+	struct sockaddr_storage		 sa_peer_initial;/* tracking half-open */
+	int				 sa_halfopen;
 
 	struct iked_frag		 sa_fragments;
 
@@ -904,6 +914,9 @@ struct iked {
 	struct iked_raddaes		 sc_raddaes;
 	struct iked_radclients		 sc_raddaeclients;
 
+	struct iked_halfopens		 sc_halfopens;
+	size_t				 sc_halfopen_count;
+
 	struct iked_stats		 sc_stats;
 
 	void				*sc_priv;	/* per-process */
@@ -1086,6 +1099,11 @@ struct iked_sa *
 void	 sa_dstid_remove(struct iked *, struct iked_sa *);
 int	 proposals_negotiate(struct iked_proposals *, struct iked_proposals *,
 	    struct iked_proposals *, int, int);
+
+size_t	 sa_ho_get_count(struct iked *, struct iked_message *);
+int	 sa_ho_insert(struct iked *, struct iked_sa *, struct iked_message *);
+int	 sa_ho_remove(struct iked *, struct iked_sa *);
+
 RB_PROTOTYPE(iked_sas, iked_sa, sa_entry, sa_cmp);
 RB_PROTOTYPE(iked_dstid_sas, iked_sa, sa_dstid_entry, sa_dstid_cmp);
 RB_PROTOTYPE(iked_addrpool, iked_sa, sa_addrpool_entry, sa_addrpool_cmp);
@@ -1093,6 +1111,7 @@ RB_PROTOTYPE(iked_addrpool6, iked_sa, sa_addrpool6_entry, sa_addrpool6_cmp);
 RB_PROTOTYPE(iked_users, iked_user, user_entry, user_cmp);
 RB_PROTOTYPE(iked_activesas, iked_childsa, csa_node, childsa_cmp);
 RB_PROTOTYPE(iked_flows, iked_flow, flow_node, flow_cmp);
+RB_PROTOTYPE(iked_halfopens, iked_halfopen, ho_entry, ho_cmp);
 
 /* crypto.c */
 struct iked_hash *
