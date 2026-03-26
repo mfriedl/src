@@ -61,6 +61,7 @@ config_new_sa(struct iked *env, int initiator)
 	memcpy(&sa->sa_timeused, &sa->sa_timecreated, sizeof(sa->sa_timeused));
 
 	ikestat_inc(env, ikes_sa_created);
+	env->sc_half_open_count++;
 	return (sa);
 }
 
@@ -989,6 +990,8 @@ config_getstatic(struct iked *env, struct imsg *imsg)
 	log_debug("%s: nattport %u", __func__, env->sc_nattport);
 	log_debug("%s: %sstickyaddress", __func__,
 	    env->sc_stickyaddress ? "" : "no ");
+	log_debug("%s: sa_cookies_threshold %zu", __func__,
+	    env->sc_cookies_threshold);
 
 	ikev2_reset_alive_timer(env);
 

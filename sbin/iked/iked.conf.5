@@ -180,6 +180,24 @@ is established, it replaces the old SA.
 Don't limit the number of IKE SAs per
 .Ic dstid .
 This is the default.
+.It Ic set sa_cookies_threshold Ar number
+Set the amount of half-open SAs beyond which
+.Xr iked 8
+will start requiring use of cookies during the initial handshake with
+a new peer, which mitigates some denial-of-service scenarios.
+The default value is 30 half-open SAs.
+A zero value disables use of cookies.
+.Pp
+When a peer requests establishment of a new SA,
+.Xr iked 8
+can either allocate state for the new SA immediately or respond with a
+non-forgable cookie.
+When cookies are used, the peer must retry SA establishment and the retried
+request must include a copy of the cookie sent by
+.Xr iked 8 .
+If the peer fails to provide the cookie then establishment of the SA will fail.
+This ensures that bi-directional communication with the peer is indeed possible
+before committing any resources to communication with the peer.
 .It Ic set fragmentation
 Enable IKEv2 Message Fragmentation (RFC 7383) support.
 This allows IKEv2 to operate in environments that might block IP fragments.

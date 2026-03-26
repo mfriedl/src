@@ -420,6 +420,8 @@ sa_state(struct iked *env, struct iked_sa *sa, int state)
 		case IKEV2_STATE_ESTABLISHED:
 			ikestat_inc(env, ikes_sa_established_total);
 			ikestat_inc(env, ikes_sa_established_current);
+			if (env->sc_half_open_count)
+				env->sc_half_open_count--;
 			break;
 		case IKEV2_STATE_CLOSED:
 		case IKEV2_STATE_CLOSING:
@@ -432,6 +434,8 @@ sa_state(struct iked *env, struct iked_sa *sa, int state)
 				break;
 			default:
 				ikestat_inc(env, ikes_sa_established_failures);
+				if (env->sc_half_open_count)
+					env->sc_half_open_count--;
 				break;
 			}
 			break;
