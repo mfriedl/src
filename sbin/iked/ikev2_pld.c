@@ -2119,18 +2119,20 @@ ikev2_pld_eap(struct iked *env, struct ikev2_payload *pld,
 	return (0);
 }
 
-/* parser for the initial IKE_AUTH payload, does not require msg_sa */
+/* parser for the initial SA_INIT/IKE_AUTH payload, does not require msg_sa */
 int
 ikev2_pld_parse_quick(struct iked *env, struct ike_header *hdr,
     struct iked_message *msg, size_t offset)
 {
 	struct ikev2_payload	 pld;
 	struct ikev2_frag_payload frag;
+	struct ikev2_notify	 n;
 	uint8_t			*msgbuf = ibuf_data(msg->msg_data);
 	uint8_t			*buf;
 	size_t			 len, total, left;
 	size_t			 length;
 	unsigned int		 payload;
+	uint16_t		 type;
 
 	log_debug("%s: header ispi %s rspi %s"
 	    " nextpayload %s version 0x%02x exchange %s flags 0x%02x"
@@ -2184,6 +2186,42 @@ ikev2_pld_parse_quick(struct iked *env, struct ike_header *hdr,
 				return (-1);
 			memcpy(&frag, buf, sizeof(frag));
 			msg->msg_frag_num = betoh16(frag.frag_num);
+			break;
+		case IKEV2_PAYLOAD_NONCE:
+			len = left;
+			buf = msgbuf + offset;
+			print_hex(buf, 0, len);
+			if (len == 0 || ibuf_length(msg->msg_nonce))
+				return (-1);
+			if ((msg->msg_nonce = ibuf_new(buf, len)) == NULL) {
+				log_debug("%s: failed to get peer nonce",
+				    __func__);
+				return (-1);
+			}
+			break;
+		case IKEV2_PAYLOAD_NOTIFY:
+			if (ikev2_validate_notify(msg, offset, left, &n))
+				return (-1);
+			type = betoh16(n.n_type);
+			if (type != IKEV2_N_COOKIE)
+				break;
+			len = left - sizeof(n);
+			if (len < IKED_COOKIE_MIN || len > IKED_COOKIE_MAX) {
+				log_debug("%s: ignoring malformed cookie"
+				    " notification: %zu", __func__, left);
+				return (-1);
+			}
+			log_debug("%s: received cookie, len %zu", __func__,
+			    len);
+			buf = msgbuf + offset + sizeof(n);
+			print_hex(buf, 0, len);
+
+			ibuf_free(msg->msg_cookie);
+			if ((msg->msg_cookie = ibuf_new(buf, len)) == NULL) {
+				log_debug("%s: failed to get peer cookie",
+				    __func__);
+				return (-1);
+			}
 			break;
 		}
 

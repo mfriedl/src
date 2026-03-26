@@ -474,6 +474,9 @@ show_stats(struct imsg *imsg, int quiet)
 	p(ikes_frag_rcvd_drop, "\t%llu fragment%s dropped\n");
 	p(ikes_frag_reass_ok, "\t%llu fragment%s reassembled\n");
 	p(ikes_frag_reass_drop, "\t%llu fragment%s could not be reassembled\n");
+	p(ikes_cookies_sent, "\t%llu cookie%s sent\n");
+	p(ikes_cookies_ok, "\t%llu cookie%s matched\n");
+	p(ikes_cookies_fail, "\t%llu cookie%s failed to match\n");
 	p(ikes_update_addresses_sent, "\t%llu update addresses request%s sent\n");
 	p(ikes_dpd_sent, "\t%llu dpd request%s sent\n");
 	p(ikes_keepalive_sent, "\t%llu keepalive message%s sent\n");

@@ -583,6 +583,9 @@ struct iked_stats {
 	uint64_t	ikes_frag_rcvd_drop;
 	uint64_t	ikes_frag_reass_ok;
 	uint64_t	ikes_frag_reass_drop;
+	uint64_t	ikes_cookies_sent;
+	uint64_t	ikes_cookies_ok;
+	uint64_t	ikes_cookies_fail;
 	uint64_t	ikes_update_addresses_sent;
 	uint64_t	ikes_dpd_sent;
 	uint64_t	ikes_keepalive_sent;
@@ -866,6 +869,7 @@ struct iked_static {
 	in_port_t		 st_nattport;
 	int			 st_stickyaddress; /* addr per DSTID  */
 	int			 st_vendorid;
+	size_t			 st_cookies_threshold;
 };
 
 struct iked {
@@ -886,6 +890,7 @@ struct iked {
 #define sc_nattport		sc_static.st_nattport
 #define sc_stickyaddress	sc_static.st_stickyaddress
 #define sc_vendorid		sc_static.st_vendorid
+#define sc_cookies_threshold	sc_static.st_cookies_threshold
 
 	struct iked_policies		 sc_policies;
 	struct iked_policy		*sc_defaultcon;
@@ -903,6 +908,12 @@ struct iked {
 	struct iked_radcfgmaps		 sc_radcfgmaps;
 	struct iked_raddaes		 sc_raddaes;
 	struct iked_radclients		 sc_raddaeclients;
+
+	size_t				 sc_half_open_count;
+	uint8_t				 sc_require_cookies;
+	struct ibuf			*sc_cookies_secret;
+#define IKED_COOKIES_THRESHOLD		30	/* number of half-open SAs */
+#define IKED_COOKIES_THRESHOLD_MAX	1024
 
 	struct iked_stats		 sc_stats;
 

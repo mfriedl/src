@@ -112,6 +112,7 @@ static long		 ocsp_maxage = -1;
 static int		 cert_partial_chain = 0;
 static struct iked_radopts
 			 radauth, radacct;
+static size_t		 cookies_threshold = IKED_COOKIES_THRESHOLD;
 
 struct iked_transform ikev2_default_ike_transforms[] = {
 	{ IKEV2_XFORMTYPE_ENCR, IKEV2_XFORMENCR_AES_CBC, 256 },
@@ -457,7 +458,7 @@ typedef struct {
 %token	CERTPARTIALCHAIN
 %token	REQUEST IFACE
 %token	RADIUS ACCOUNTING SERVER SECRET MAX_TRIES MAX_FAILOVERS
-%token	CLIENT DAE LISTEN ON NATT
+%token	CLIENT DAE LISTEN ON NATT SA_COOKIES_THRESHOLD
 %token	<v.string>		STRING
 %token	<v.number>		NUMBER
 %type	<v.string>		string
@@ -553,6 +554,14 @@ set		: SET ACTIVE	{ passive = 0; }
 				YYERROR;
 			}
 			dpd_interval = $3;
+		}
+		| SET SA_COOKIES_THRESHOLD NUMBER {
+			if ($3 < 0 || $3 >= IKED_COOKIES_THRESHOLD_MAX) {
+				yyerror("threshold outside range (0 - %d)",
+				    IKED_COOKIES_THRESHOLD_MAX);
+				YYERROR;
+			}
+			cookies_threshold = $3;
 		}
 		;
 
@@ -1626,6 +1635,7 @@ lookup(char *s)
 		{ "rdomain",		RDOMAIN },
 		{ "request",		REQUEST },
 		{ "sa",			SA },
+		{ "sa_cookies_threshold",SA_COOKIES_THRESHOLD },
 		{ "secret",		SECRET },
 		{ "server",		SERVER },
 		{ "set",		SET },
@@ -2055,6 +2065,7 @@ parse_config(const char *filename, struct iked *x_env)
 	env->sc_vendorid = vendorid;
 	env->sc_radauth = radauth;
 	env->sc_radacct = radacct;
+	env->sc_cookies_threshold = cookies_threshold;
 
 	if (!rules)
 		log_warnx("%s: no valid configuration rules found",
