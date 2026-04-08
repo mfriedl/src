@@ -2873,56 +2873,11 @@ copy_set_server_options(ServerOptions *dst, ServerOptions *src, int preauth)
 	if (src->n != -1) \
 		dst->n = src->n; \
 } while (0)
-
-	M_CP_INTOPT(password_authentication);
-	M_CP_INTOPT(gss_authentication);
-	M_CP_INTOPT(pubkey_authentication);
-	M_CP_INTOPT(pubkey_auth_options);
-	M_CP_INTOPT(kerberos_authentication);
-	M_CP_INTOPT(hostbased_authentication);
-	M_CP_INTOPT(hostbased_uses_name_from_packet_only);
-	M_CP_INTOPT(kbd_interactive_authentication);
-	M_CP_INTOPT(permit_root_login);
-	M_CP_INTOPT(permit_empty_passwd);
-	M_CP_INTOPT(ignore_rhosts);
-
-	M_CP_INTOPT(allow_tcp_forwarding);
-	M_CP_INTOPT(allow_streamlocal_forwarding);
-	M_CP_INTOPT(allow_agent_forwarding);
-	M_CP_INTOPT(disable_forwarding);
-	M_CP_INTOPT(expose_userauth_info);
-	M_CP_INTOPT(permit_tun);
-	M_CP_INTOPT(fwd_opts.gateway_ports);
-	M_CP_INTOPT(fwd_opts.streamlocal_bind_unlink);
-	M_CP_INTOPT(x11_display_offset);
-	M_CP_INTOPT(x11_forwarding);
-	M_CP_INTOPT(x11_use_localhost);
-	M_CP_INTOPT(permit_tty);
-	M_CP_INTOPT(permit_user_rc);
-	M_CP_INTOPT(max_sessions);
-	M_CP_INTOPT(max_authtries);
-	M_CP_INTOPT(client_alive_count_max);
-	M_CP_INTOPT(client_alive_interval);
-	M_CP_INTOPT(ip_qos_interactive);
-	M_CP_INTOPT(ip_qos_bulk);
-	M_CP_INTOPT(rekey_limit);
-	M_CP_INTOPT(rekey_interval);
-	M_CP_INTOPT(log_level);
-	M_CP_INTOPT(required_rsa_size);
-	M_CP_INTOPT(unused_connection_timeout);
-	M_CP_INTOPT(refuse_connection);
-
-	/*
-	 * The bind_mask is a mode_t that may be unsigned, so we can't use
-	 * M_CP_INTOPT - it does a signed comparison that causes compiler
-	 * warnings.
-	 */
-	if (src->fwd_opts.streamlocal_bind_mask != (mode_t)-1) {
-		dst->fwd_opts.streamlocal_bind_mask =
-		    src->fwd_opts.streamlocal_bind_mask;
-	}
-
-	/* M_CP_STROPT and M_CP_STRARRAYOPT should not appear before here */
+#define M_CP_INT64OPT(n) M_CP_INTOPT(n)
+#define M_CP_MODEOPT(n) do {\
+	if (src->n != (mode_t)-1) \
+		dst->n = src->n; \
+} while (0)
 #define M_CP_STROPT(n) do {\
 	if (src->n != NULL && dst->n != src->n) { \
 		free(dst->n); \
@@ -2944,7 +2899,7 @@ copy_set_server_options(ServerOptions *dst, ServerOptions *src, int preauth)
 } while(0)
 
 	/* See comment in servconf.h */
-	COPY_MATCH_STRING_OPTS();
+	SERVCONF_COPY_OPTS();
 
 	/* Arguments that accept '+...' need to be expanded */
 	assemble_algorithms(dst);
@@ -2973,6 +2928,8 @@ copy_set_server_options(ServerOptions *dst, ServerOptions *src, int preauth)
 }
 
 #undef M_CP_INTOPT
+#undef M_CP_INT64OPT
+#undef M_CP_MODEOPT
 #undef M_CP_STROPT
 #undef M_CP_STRARRAYOPT
 

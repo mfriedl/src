@@ -278,15 +278,49 @@ TAILQ_HEAD(include_list, include_item);
 
 
 /*
- * These are string config options that must be copied between the
+ * These are config options that must be copied between the
  * Match sub-config and the main config, and must be sent from the
  * privsep child to the privsep master. We use a macro to ensure all
  * the options are copied and the copies are done in the correct order.
- *
- * NB. an option must appear in servconf.c:copy_set_server_options() or
- * COPY_MATCH_STRING_OPTS here but never both.
  */
-#define COPY_MATCH_STRING_OPTS() do { \
+#define SERVCONF_COPY_OPTS() do { \
+		M_CP_INTOPT(password_authentication); \
+		M_CP_INTOPT(gss_authentication); \
+		M_CP_INTOPT(pubkey_authentication); \
+		M_CP_INTOPT(pubkey_auth_options); \
+		M_CP_INTOPT(kerberos_authentication); \
+		M_CP_INTOPT(hostbased_authentication); \
+		M_CP_INTOPT(hostbased_uses_name_from_packet_only); \
+		M_CP_INTOPT(kbd_interactive_authentication); \
+		M_CP_INTOPT(permit_root_login); \
+		M_CP_INTOPT(permit_empty_passwd); \
+		M_CP_INTOPT(ignore_rhosts); \
+		M_CP_INTOPT(allow_tcp_forwarding); \
+		M_CP_INTOPT(allow_streamlocal_forwarding); \
+		M_CP_INTOPT(allow_agent_forwarding); \
+		M_CP_INTOPT(disable_forwarding); \
+		M_CP_INTOPT(expose_userauth_info); \
+		M_CP_INTOPT(permit_tun); \
+		M_CP_INTOPT(fwd_opts.gateway_ports); \
+		M_CP_INTOPT(fwd_opts.streamlocal_bind_unlink); \
+		M_CP_INTOPT(x11_display_offset); \
+		M_CP_INTOPT(x11_forwarding); \
+		M_CP_INTOPT(x11_use_localhost); \
+		M_CP_INTOPT(permit_tty); \
+		M_CP_INTOPT(permit_user_rc); \
+		M_CP_INTOPT(max_sessions); \
+		M_CP_INTOPT(max_authtries); \
+		M_CP_INTOPT(client_alive_count_max); \
+		M_CP_INTOPT(client_alive_interval); \
+		M_CP_INTOPT(ip_qos_interactive); \
+		M_CP_INTOPT(ip_qos_bulk); \
+		M_CP_INT64OPT(rekey_limit); \
+		M_CP_INTOPT(rekey_interval); \
+		M_CP_INTOPT(log_level); \
+		M_CP_INTOPT(required_rsa_size); \
+		M_CP_INTOPT(unused_connection_timeout); \
+		M_CP_INTOPT(refuse_connection); \
+		M_CP_MODEOPT(fwd_opts.streamlocal_bind_mask); \
 		M_CP_STROPT(banner); \
 		M_CP_STROPT(trusted_user_ca_keys); \
 		M_CP_STROPT(authorized_keys_command); \

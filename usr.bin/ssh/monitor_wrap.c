@@ -299,55 +299,70 @@ mm_sshkey_sign(struct ssh *ssh, struct sshkey *key, u_char **sigp, size_t *lenp,
 void
 mm_decode_activate_server_options(struct ssh *ssh, struct sshbuf *m)
 {
-	const u_char *p;
-	size_t len;
+	ServerOptions newopts;
 	u_int i;
-	ServerOptions *newopts;
 	int r;
 
-	if ((r = sshbuf_get_string_direct(m, &p, &len)) != 0)
-		fatal_fr(r, "parse opts");
-	if (len != sizeof(*newopts))
-		fatal_f("option block size mismatch");
-	newopts = xcalloc(sizeof(*newopts), 1);
-	memcpy(newopts, p, sizeof(*newopts));
+	initialize_server_options(&newopts);
 
+#define M_CP_INTOPT(x) do {\
+		if ((r = sshbuf_get_u32(m, &newopts.x)) != 0) \
+			fatal_fr(r, "parse %s", #x); \
+	} while (0)
+#define M_CP_INT64OPT(x) do {\
+		if ((r = sshbuf_get_u64(m, &newopts.x)) != 0) \
+			fatal_fr(r, "parse %s", #x); \
+	} while (0)
+#define M_CP_MODEOPT(x) M_CP_INTOPT(x)
 #define M_CP_STROPT(x) do { \
-		if (newopts->x != NULL && \
-		    (r = sshbuf_get_cstring(m, &newopts->x, NULL)) != 0) \
+		u_int have_option = 0; \
+		if ((r = sshbuf_get_u32(m, &have_option)) != 0) \
+			fatal_fr(r, "parse %s (flag)", #x); \
+		if (have_option && \
+		    (r = sshbuf_get_cstring(m, &newopts.x, NULL)) != 0) \
 			fatal_fr(r, "parse %s", #x); \
 	} while (0)
 #define M_CP_STRARRAYOPT(x, nx, clobber) do { \
-		newopts->x = newopts->nx == 0 ? \
-		    NULL : xcalloc(newopts->nx, sizeof(*newopts->x)); \
-		for (i = 0; i < newopts->nx; i++) { \
+		if ((r = sshbuf_get_u32(m, &newopts.nx)) != 0) \
+			fatal_fr(r, "parse %s (flag)", #x); \
+		newopts.x = newopts.nx == 0 ? \
+		    NULL : xcalloc(newopts.nx, sizeof(*newopts.x)); \
+		for (i = 0; i < newopts.nx; i++) { \
 			if ((r = sshbuf_get_cstring(m, \
-			    &newopts->x[i], NULL)) != 0) \
+			    &newopts.x[i], NULL)) != 0) \
 				fatal_fr(r, "parse %s", #x); \
 		} \
 	} while (0)
 	/* See comment in servconf.h */
-	COPY_MATCH_STRING_OPTS();
+	SERVCONF_COPY_OPTS();
+#undef M_CP_INT64OPT
+#undef M_CP_INTOPT
+#undef M_CP_MODEOPT
 #undef M_CP_STROPT
 #undef M_CP_STRARRAYOPT
 
-	copy_set_server_options(&options, newopts, 1);
+	copy_set_server_options(&options, &newopts, 1);
 	log_change_level(options.log_level);
 	log_verbose_reset();
 	for (i = 0; i < options.num_log_verbose; i++)
 		log_verbose_add(options.log_verbose[i]);
 
 	/* use the macro hell to clean up too */
-#define M_CP_STROPT(x) free(newopts->x)
+#define M_CP_INT64OPT(x)
+#define M_CP_INTOPT(x)
+#define M_CP_MODEOPT(x)
+#define M_CP_STROPT(x) free(newopts.x)
 #define M_CP_STRARRAYOPT(x, nx, clobber) do { \
-		for (i = 0; i < newopts->nx; i++) \
-			free(newopts->x[i]); \
-		free(newopts->x); \
+		for (i = 0; i < newopts.nx; i++) \
+			free(newopts.x[i]); \
+		free(newopts.x); \
 	} while (0)
-	COPY_MATCH_STRING_OPTS();
+	SERVCONF_COPY_OPTS();
+#undef M_CP_INT64OPT
+#undef M_CP_INTOPT
+#undef M_CP_MODEOPT
 #undef M_CP_STROPT
 #undef M_CP_STRARRAYOPT
-	free(newopts);
 }
 
 #define GETPW(b, id) \

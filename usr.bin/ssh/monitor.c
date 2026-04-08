@@ -780,23 +780,36 @@ mm_encode_server_options(struct sshbuf *m)
 	int r;
 	u_int i;
 
-	/* XXX this leaks raw pointers to the unpriv child processes */
-	if ((r = sshbuf_put_string(m, &options, sizeof(options))) != 0)
-		fatal_fr(r, "assemble options");
-
+#define M_CP_INTOPT(x) do { \
+		if ((r = sshbuf_put_u32(m, options.x)) != 0) \
+			fatal_fr(r, "assemble %s", #x); \
+	} while (0)
+#define M_CP_INT64OPT(x) do { \
+		if ((r = sshbuf_put_u64(m, options.x)) != 0) \
+			fatal_fr(r, "assemble %s", #x); \
+	} while (0)
+#define M_CP_MODEOPT(x) M_CP_INTOPT(x)
 #define M_CP_STROPT(x) do { \
-		if (options.x != NULL && \
+		u_int have_option = (options.x != NULL); \
+		if ((r = sshbuf_put_u32(m, have_option)) != 0) \
+			fatal_fr(r, "assemble %s", #x); \
+		if (have_option && \
 		    (r = sshbuf_put_cstring(m, options.x)) != 0) \
 			fatal_fr(r, "assemble %s", #x); \
 	} while (0)
 #define M_CP_STRARRAYOPT(x, nx, clobber) do { \
+		if ((r = sshbuf_put_u32(m, options.nx)) != 0) \
+			fatal_fr(r, "assemble %s", #x); \
 		for (i = 0; i < options.nx; i++) { \
 			if ((r = sshbuf_put_cstring(m, options.x[i])) != 0) \
 				fatal_fr(r, "assemble %s", #x); \
 		} \
 	} while (0)
 	/* See comment in servconf.h */
-	COPY_MATCH_STRING_OPTS();
+	SERVCONF_COPY_OPTS();
+#undef M_CP_INT64OPT
+#undef M_CP_INTOPT
+#undef M_CP_MODEOPT
 #undef M_CP_STROPT
 #undef M_CP_STRARRAYOPT
 }
