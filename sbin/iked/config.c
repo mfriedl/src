@@ -774,14 +774,22 @@ int
 config_setpolicy(struct iked *env, struct iked_policy *pol,
     enum privsep_procid id)
 {
-	struct iked_proposal	*prop;
+	struct iked_policy	 copy;
+	struct iked_proposal	*prop, *proposals;
 	struct iked_transform	*xform;
-	size_t			 iovcnt, j, c = 0;
+	size_t			 iovcnt, j, c = 0, proposal, nproposals;
 	struct iovec		 iov[IOV_MAX];
 
 	iovcnt = 1;
+	nproposals = 0;
 	TAILQ_FOREACH(prop, &pol->pol_proposals, prop_entry) {
 		iovcnt += prop->prop_nxforms + 1;
+		nproposals++;
+	}
+
+	if (nproposals != pol->pol_nproposals) {
+		log_warn("%s: nproposals mismatch", __func__);
+		return (-1);
 	}
 
 	if (iovcnt > IOV_MAX) {
@@ -789,12 +797,52 @@ config_setpolicy(struct iked *env, struct iked_policy *pol,
 		return (-1);
 	}
 
-	iov[c].iov_base = pol;
-	iov[c++].iov_len = sizeof(*pol);
+	bzero(&copy, sizeof(copy));
+#define MSG_SEND(x) memcpy(&copy.x, &pol->x, sizeof(pol->x))
+	MSG_SEND(pol_id);
+	MSG_SEND(pol_name);
+	MSG_SEND(pol_iface);
+	MSG_SEND(pol_flags);
+	MSG_SEND(pol_refcnt);
+	MSG_SEND(pol_certreqtype);
+	MSG_SEND(pol_af);
+	MSG_SEND(pol_rdomain);
+	MSG_SEND(pol_saproto);
+	MSG_SEND(pol_ipproto);
+	MSG_SEND(pol_nipproto);
+	MSG_SEND(pol_peer);
+	MSG_SEND(pol_peerid);
+	MSG_SEND(pol_peerdh);
+	MSG_SEND(pol_local);
+	MSG_SEND(pol_localid);
+	MSG_SEND(pol_auth);
+	MSG_SEND(pol_tag);
+	MSG_SEND(pol_tap);
+	MSG_SEND(pol_nproposals);
+	MSG_SEND(pol_cfg);
+	MSG_SEND(pol_ncfg);
+	MSG_SEND(pol_rekey);
+	MSG_SEND(pol_lifetime);
+#undef MSG_SEND
 
+	iov[c].iov_base = &copy;
+	iov[c++].iov_len = sizeof(copy);
+
+	if ((proposals = calloc(nproposals, sizeof(*proposals))) == NULL)
+		fatal("config_setpolicy: proposals");
+	proposal = 0;
 	TAILQ_FOREACH(prop, &pol->pol_proposals, prop_entry) {
-		iov[c].iov_base = prop;
+
+#define MSG_SEND(x) memcpy(&proposals[proposal].x, &prop->x, sizeof(prop->x))
+		MSG_SEND(prop_id);
+		MSG_SEND(prop_protoid);
+		MSG_SEND(prop_localspi);
+		MSG_SEND(prop_peerspi);
+		MSG_SEND(prop_nxforms);
+#undef MSG_SEND
+		iov[c].iov_base = &proposals[proposal];
 		iov[c++].iov_len = sizeof(*prop);
+		proposal++;
 
 		for (j = 0; j < prop->prop_nxforms; j++) {
 			xform = prop->prop_xforms + j;
@@ -806,15 +854,19 @@ config_setpolicy(struct iked *env, struct iked_policy *pol,
 
 	print_policy(pol);
 
-	if (env->sc_opts & IKED_OPT_NOACTION)
+	if (env->sc_opts & IKED_OPT_NOACTION) {
+		free(proposals);
 		return (0);
+	}
 
 	if (proc_composev(&env->sc_ps, id, IMSG_CFG_POLICY, iov,
 	    iovcnt) == -1) {
+		free(proposals);
 		log_debug("%s: proc_composev failed", __func__);
 		return (-1);
 	}
 
+	free(proposals);
 	return (0);
 }
 
@@ -822,17 +874,30 @@ int
 config_setflow(struct iked *env, struct iked_policy *pol,
     enum privsep_procid id)
 {
-	struct iked_flow	*flow;
+	struct iked_flow	*flow, copy;
 	struct iovec		 iov[2];
 
 	if (env->sc_opts & IKED_OPT_NOACTION)
 		return (0);
 
 	RB_FOREACH(flow, iked_flows, &pol->pol_flows) {
+		bzero(&copy, sizeof(copy));
+#define MSG_SEND(x) memcpy(&copy.x, &flow->x, sizeof(flow->x))
+		MSG_SEND(flow_src);
+		MSG_SEND(flow_dst);
+		MSG_SEND(flow_dir);
+		MSG_SEND(flow_rdomain);
+		MSG_SEND(flow_prenat);
+		MSG_SEND(flow_fixed);
+		MSG_SEND(flow_loaded);
+		MSG_SEND(flow_saproto);
+		MSG_SEND(flow_ipproto);
+#undef MSG_SEND
+
 		iov[0].iov_base = &pol->pol_id;
 		iov[0].iov_len = sizeof(pol->pol_id);
-		iov[1].iov_base = flow;
-		iov[1].iov_len = sizeof(*flow);
+		iov[1].iov_base = &copy;
+		iov[1].iov_len = sizeof(copy);
 
 		if (proc_composev(&env->sc_ps, id, IMSG_CFG_FLOW,
 		    iov, 2) == -1) {
