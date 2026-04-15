@@ -345,7 +345,7 @@ esp_input(struct mbuf **mp, struct tdb *tdb, int skip, int protoff,
 	struct mbuf *m = *mp, *m1, *mo;
 	struct cryptodesc *crde = NULL, *crda = NULL;
 	struct cryptop *crp = NULL;
-	int plen, alen, hlen, error, roff;
+	int plen, alen, hlen, error, roff, rval;
 	uint32_t btsx, esn;
 #ifdef ENCDEBUG
 	char buf[INET6_ADDRSTRLEN];
@@ -385,7 +385,10 @@ esp_input(struct mbuf **mp, struct tdb *tdb, int skip, int protoff,
 		    &btsx);
 		btsx = ntohl(btsx);
 
-		switch (checkreplaywindow(tdb, tdb->tdb_rpl, btsx, &esn, 0)) {
+		mtx_enter(&tdb->tdb_mtx);
+		rval = checkreplaywindow(tdb, tdb->tdb_rpl, btsx, &esn, 0);
+		mtx_leave(&tdb->tdb_mtx);
+		switch (rval) {
 		case 0: /* All's well */
 			break;
 		case 1:
@@ -541,7 +544,10 @@ esp_input(struct mbuf **mp, struct tdb *tdb, int skip, int protoff,
 		    &btsx);
 		btsx = ntohl(btsx);
 
-		switch (checkreplaywindow(tdb, tdb->tdb_rpl, btsx, &esn, 1)) {
+		mtx_enter(&tdb->tdb_mtx);
+		rval = checkreplaywindow(tdb, tdb->tdb_rpl, btsx, &esn, 1);
+		mtx_leave(&tdb->tdb_mtx);
+		switch (rval) {
 		case 0: /* All's well */
 #if NPFSYNC > 0
 			pfsync_update_tdb(tdb,0);
@@ -836,7 +842,9 @@ esp_output(struct mbuf *m, struct tdb *tdb, int skip, int protoff)
 	/* Initialize ESP header. */
 	memcpy(mtod(mo, caddr_t) + roff, (caddr_t) &tdb->tdb_spi,
 	    sizeof(u_int32_t));
+	mtx_enter(&tdb->tdb_mtx);
 	replay64 = tdb->tdb_rpl++;	/* used for both header and ESN */
+	mtx_leave(&tdb->tdb_mtx);
 	replay = htonl((u_int32_t)replay64);
 	memcpy(mtod(mo, caddr_t) + roff + sizeof(u_int32_t), (caddr_t) &replay,
 	    sizeof(u_int32_t));

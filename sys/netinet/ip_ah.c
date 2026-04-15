@@ -537,7 +537,7 @@ ah_input(struct mbuf **mp, struct tdb *tdb, int skip, int protoff,
 	uint32_t btsx, esn;
 	uint8_t *ptr = NULL;
 	uint8_t hl;
-	int error, rplen;
+	int error, rplen, rval;
 	uint64_t ibytes;
 #ifdef ENCDEBUG
 	char buf[INET6_ADDRSTRLEN];
@@ -555,7 +555,10 @@ ah_input(struct mbuf **mp, struct tdb *tdb, int skip, int protoff,
 		    sizeof(u_int32_t), &btsx);
 		btsx = ntohl(btsx);
 
-		switch (checkreplaywindow(tdb, tdb->tdb_rpl, btsx, &esn, 0)) {
+		mtx_enter(&tdb->tdb_mtx);
+		rval = checkreplaywindow(tdb, tdb->tdb_rpl, btsx, &esn, 0);
+		mtx_leave(&tdb->tdb_mtx);
+		switch (rval) {
 		case 0: /* All's well. */
 			break;
 		case 1:
@@ -729,7 +732,10 @@ ah_input(struct mbuf **mp, struct tdb *tdb, int skip, int protoff,
 		    sizeof(u_int32_t), &btsx);
 		btsx = ntohl(btsx);
 
-		switch (checkreplaywindow(tdb, tdb->tdb_rpl, btsx, &esn, 1)) {
+		mtx_enter(&tdb->tdb_mtx);
+		rval = checkreplaywindow(tdb, tdb->tdb_rpl, btsx, &esn, 1);
+		mtx_leave(&tdb->tdb_mtx);
+		switch (rval) {
 		case 0: /* All's well. */
 #if NPFSYNC > 0
 			pfsync_update_tdb(tdb,0);
@@ -1016,7 +1022,9 @@ ah_output(struct mbuf *m, struct tdb *tdb, int skip, int protoff)
 	/* Zeroize authenticator. */
 	m_copyback(m, skip + rplen, ahx->authsize, ipseczeroes, M_NOWAIT);
 
+	mtx_enter(&tdb->tdb_mtx);
 	replay64 = tdb->tdb_rpl++;
+	mtx_leave(&tdb->tdb_mtx);
 	ah->ah_rpl = htonl((u_int32_t)replay64);
 #if NPFSYNC > 0
 	pfsync_update_tdb(tdb,1);
