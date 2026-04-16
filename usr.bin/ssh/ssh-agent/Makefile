@@ -7,6 +7,8 @@ SRCS+=	compat.c fatal.c readpass.c utf8.c misc-agent.c
 SRCS+=	${SRCS_BASE} ${SRCS_KEY} ${SRCS_KEYP} ${SRCS_KRL} ${SRCS_UTL}
 SRCS+=	${SRCS_SK_CLIENT}
 
+SRCS+=	authfd.c
+
 PROG=	ssh-agent
 BINOWN=	root
 BINGRP=	_sshagnt

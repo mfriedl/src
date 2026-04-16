@@ -61,6 +61,8 @@
 #include <unistd.h>
 #include <util.h>
 
+#include <dirent.h>
+
 #include "xmalloc.h"
 #include "ssh.h"
 #include "ssh2.h"
@@ -189,6 +191,8 @@ static int fingerprint_hash = SSH_FP_HASH_DEFAULT;
 /* Refuse signing of non-SSH messages for web-origin FIDO keys */
 static int restrict_websafe = 1;
 static char *websafe_allowlist;
+
+static char *proxy_dir = NULL;
 
 static void
 close_socket(SocketEntry *e)
@@ -1808,6 +1812,110 @@ process_extension(SocketEntry *e)
 	    success ? SSH_AGENT_SUCCESS : SSH_AGENT_EXTENSION_FAILURE);
 }
 
+static void
+proxy_sign_request2(SocketEntry *e)
+{
+}
+
+static void
+proxy_request_identities(SocketEntry *e)
+{
+	struct ssh_identitylist *idlist = NULL;
+	u_int i = 0, nentries = 0;
+	struct sshbuf *msg, *keys;
+	char *fp;
+	DIR *d = NULL;
+	struct dirent *dp;
+	struct stat sb;
+	char *dirpath = NULL, *path;
+	int sock, r;
+
+	if ((msg = sshbuf_new()) == NULL || (keys = sshbuf_new()) == NULL)
+		fatal_f("sshbuf_new failed");
+	if ((dirpath = proxy_dir) == NULL)
+		goto out;
+	if ((d = opendir(dirpath)) == NULL) {
+		if (errno != ENOENT)
+			error_f("opendir \"%s\": %s", dirpath, strerror(errno));
+		goto out;
+	}
+	while ((dp = readdir(d)) != NULL) {
+		if (dp->d_type != DT_SOCK && dp->d_type != DT_LNK && dp->d_type != DT_UNKNOWN)
+			continue;
+		if (fstatat(dirfd(d), dp->d_name, &sb, 0) != 0 && errno != ENOENT) {
+			error_f("stat \"%s/%s\": %s",
+			    dirpath, dp->d_name, strerror(errno));
+			continue;
+		}
+		if (!S_ISSOCK(sb.st_mode))
+			continue;
+		xasprintf(&path, "%s/%s", dirpath, dp->d_name);
+		r = ssh_get_authentication_socket_path(path, &sock);
+		free(path);
+		if (r != 0) {
+			error_fr(r, "ssh_get_authentication_socket_path");
+			continue;
+		}
+		/* XXX forward binding */
+		r = ssh_fetch_identitylist(sock, &idlist);
+		close(sock);
+		if (r != 0) {
+			error_fr(r, "ssh_fetch_identitylist");
+			continue;
+		}
+		for (i = 0; i < idlist->nkeys; i++) {
+			if ((fp = sshkey_fingerprint(idlist->keys[i], SSH_FP_HASH_DEFAULT,
+			    SSH_FP_DEFAULT)) == NULL)
+				fatal_f("fingerprint failed");
+			debug_f("socket %s key %u / %u: %s %s", dp->d_name, i, idtab->nentries,
+			    sshkey_ssh_name(idlist->keys[i]), fp);
+			free(fp);
+			if ((r = sshkey_puts(idlist->keys[i], keys)) != 0 ||
+			    (r = sshbuf_put_cstring(keys, idlist->comments[i])) != 0) {
+				error_fr(r, "compose key/comment");
+				continue;
+			}
+			nentries++;
+		}
+		ssh_free_identitylist(idlist);
+	}
+ out:
+	if (d != NULL)
+		closedir(d);
+	debug2_f("replying with %u available keys", nentries);
+	if ((r = sshbuf_put_u8(msg, SSH2_AGENT_IDENTITIES_ANSWER)) != 0 ||
+	    (r = sshbuf_put_u32(msg, nentries)) != 0 ||
+	    (r = sshbuf_putb(msg, keys)) != 0)
+		fatal_fr(r, "compose");
+	if ((r = sshbuf_put_stringb(e->output, msg)) != 0)
+		fatal_fr(r, "enqueue");
+	sshbuf_free(msg);
+	sshbuf_free(keys);
+}
+
+static int
+process_proxy(u_char type, SocketEntry *e)
+{
+	switch (type) {
+	case SSH2_AGENTC_SIGN_REQUEST:
+		proxy_sign_request2(e);
+		break;
+	case SSH2_AGENTC_REQUEST_IDENTITIES:
+		proxy_request_identities(e);
+		break;
+	case SSH_AGENTC_EXTENSION:
+		/* XXX also store signature */
+		process_extension(e);
+		break;
+	default:
+		/* Unsupported message. */
+		sshbuf_reset(e->request);
+		send_status(e, 0);
+		break;
+	}
+	return 1;
+}
+
 /*
  * dispatch incoming message.
  * returns 1 on success, 0 for incomplete messages or -1 on error.
@@ -1865,6 +1973,9 @@ process_message(u_int socknum)
 		}
 		return 1;
 	}
+
+	if (proxy_dir)
+		return process_proxy(type, e);
 
 	switch (type) {
 	case SSH_AGENTC_LOCK:
@@ -2253,7 +2364,7 @@ main(int ac, char **av)
 	if (getrlimit(RLIMIT_NOFILE, &rlim) == -1)
 		fatal("%s: getrlimit: %s", __progname, strerror(errno));
 
-	while ((ch = getopt(ac, av, "cDdksTuUE:a:O:P:t:")) != -1) {
+	while ((ch = getopt(ac, av, "cDdksTuUE:a:O:p:P:t:")) != -1) {
 		switch (ch) {
 		case 'E':
 			fingerprint_hash = ssh_digest_alg_by_name(optarg);
@@ -2285,6 +2396,9 @@ main(int ac, char **av)
 			if (allowed_providers != NULL)
 				fatal("-P option already specified");
 			allowed_providers = xstrdup(optarg);
+			break;
+		case 'p':
+			proxy_dir = optarg;
 			break;
 		case 's':
 			if (c_flag)
@@ -2537,6 +2651,10 @@ skip:
 		fatal("%s: unveil %s: %s", __progname, ccp, strerror(errno));
 	if (unveil("/dev/null", "rw") == -1)
 		fatal("%s: unveil /dev/null: %s", __progname, strerror(errno));
+	if (proxy_dir) {
+		if (unveil(proxy_dir, "rc") == -1)
+			fatal("%s: unveil %s: %s", __progname, proxy_dir, strerror(errno));
+	}
 	if (pledge("stdio rpath cpath wpath unix id proc exec", NULL) == -1)
 		fatal("%s: pledge: %s", __progname, strerror(errno));
 
