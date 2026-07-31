@@ -236,7 +236,7 @@ int	 kex_dh_enc(struct kex *, const struct sshbuf *, struct sshbuf **,
 int	 kex_dh_dec(struct kex *, const struct sshbuf *, struct sshbuf **);
 
 int	 kex_ecdh_dec_key_group(struct kex *, const struct sshbuf *, EC_KEY *key,
-	    const EC_GROUP *, struct sshbuf **);
+	    const EC_GROUP *, int, struct sshbuf **);
 
 int	 kex_ecdh_keypair(struct kex *);
 int	 kex_ecdh_enc(struct kex *, const struct sshbuf *, struct sshbuf **,

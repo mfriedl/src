@@ -189,7 +189,7 @@ kex_kem_mlkem768ecdh_enc(struct kex *kex,
 
 	/* append ECDH shared key */
 	if ((r = kex_ecdh_dec_key_group(kex, ec_pub, server_key, group,
-	    &ec_shared)) != 0 ||
+	    1, &ec_shared)) != 0 ||
 	    (r = sshbuf_putb(buf, ec_shared)) != 0)
 		goto out;
 
@@ -270,7 +270,8 @@ kex_kem_mlkem768ecdh_dec(struct kex *kex,
 		r = SSH_ERR_ALLOC_FAIL;
 		goto out;
 	}
-	if ((r = kex_ecdh_dec(kex, ec_pub, &ec_shared)) != 0 ||
+	if ((r = kex_ecdh_dec_key_group(kex, ec_pub, kex->ec_client_key,
+	    kex->ec_group, 1, &ec_shared)) != 0 ||
 	    (r = sshbuf_putb(buf, ec_shared)) != 0)
 		goto out;
 	if ((r = ssh_digest_buffer(kex->hash_alg, buf,
