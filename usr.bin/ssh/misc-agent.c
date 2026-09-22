@@ -319,7 +319,7 @@ int
 agent_listener_cleanup(const char *pathspec, const char *sockpath,
     const char *sockdir)
 {
-	if (sockpath == NULL || pathspec == NULL)
+	if (sockpath == NULL)
 		return 0;
 	if (unlink(sockpath) != 0) {
 		error_f("unlink \"%s\": %s", sockpath, strerror(errno));
@@ -327,6 +327,8 @@ agent_listener_cleanup(const char *pathspec, const char *sockpath,
 	}
 	debug3_f("removed socket %s", sockpath);
 
+	if (pathspec == NULL)
+		return 0;
 	if (strncmp(pathspec, "shared:", 7) == 0 && sockdir != NULL) {
 		if (rmdir(sockdir) != 0) {
 			error_f("rmdir \"%s\": %s", sockdir, strerror(errno));
