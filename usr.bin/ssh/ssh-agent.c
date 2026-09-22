@@ -2464,7 +2464,8 @@ main(int ac, char **av)
 		socket_name = xstrdup(agentsocket);
 		if ((sock = unix_listener(socket_name,
 		    SSH_LISTEN_BACKLOG, 0)) < 0) {
-			*socket_name = '\0'; /* Don't unlink existing file */
+			free(socket_name);
+			socket_name = NULL; /* Don't unlink existing file */
 			cleanup_exit(1);
 		}
 		umask(prev_mask);
